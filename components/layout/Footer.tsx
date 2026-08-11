@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import AntiquePartnerBadge from '@/components/shared/AntiquePartnerBadge'
 import Image from 'next/image'
 import {
   BUSINESS_NAME,
@@ -345,6 +346,8 @@ export default function Footer() {
                 </a>
               </p>
             </div>
+            <AntiquePartnerBadge placement="footer" className="order-first md:order-none" />
+
             <div className="hidden md:flex gap-4">
               <Link href="/privacy" className="hover:text-[#cd7f32] transition-colors">
                 Privacy Policy
