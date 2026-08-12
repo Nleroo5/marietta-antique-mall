@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { rateLimit } from '@/lib/rate-limit'
+import { partnerPromoHtml } from '@/lib/transactional-emails'
 
 // Lazy initialization to avoid build-time errors when the key is absent.
 let resend: Resend | null = null
@@ -205,7 +206,7 @@ export async function POST(request: NextRequest) {
           Thanks for sending us your ${esc(String(categoryLabel).toLowerCase())}. We've received your submission and will review it shortly. If we're interested, we'll reach out to you directly — usually within 24 hours.
         </p>
         <p style="color:#444;font-size:14px;line-height:1.6;margin:0;">You can reply directly to this email if you have any questions.</p>
-      </div>
+      </div>${partnerPromoHtml('item')}
       <div style="padding:16px 24px;background:#F7F0E8;font-size:12px;color:#999;">
         ${esc(MALL_NAME)} · (770) 973-5600
       </div>
@@ -218,7 +219,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const [lead] = await Promise.all([
+    const [leadResult, autoReplyResult] = await Promise.allSettled([
       resendClient.emails.send({
         from: MAIL_FROM,
         to: INBOX,
@@ -234,8 +235,18 @@ export async function POST(request: NextRequest) {
       }),
     ])
 
-    if (lead.error) {
-      throw new Error(lead.error.message)
+    // Only the staff notification is critical — it carries the lead. A failed
+    // confirmation is logged but must not tell the submitter their item was lost.
+    if (leadResult.status === 'rejected') {
+      throw new Error(
+        leadResult.reason instanceof Error ? leadResult.reason.message : 'Lead email failed'
+      )
+    }
+    if (leadResult.value.error) {
+      throw new Error(leadResult.value.error.message)
+    }
+    if (autoReplyResult.status === 'rejected' || autoReplyResult.value.error) {
+      console.error('item-submit: confirmation to submitter failed', autoReplyResult)
     }
 
     return NextResponse.json({ success: true }, { status: 200 })

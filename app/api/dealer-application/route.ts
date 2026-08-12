@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
+import {
+  MALL_NAME,
+  isValidEmail,
+  vendorConfirmationHtml,
+} from '@/lib/transactional-emails'
 
 // Lazy initialization to avoid build-time errors
 let resend: Resend | null = null
@@ -344,16 +349,55 @@ export async function POST(request: NextRequest) {
       throw new Error('Email service is not available')
     }
 
-    const { data, error } = await resendClient.emails.send({
-      from: 'Marietta Antique Mall <applications@mariettaantiquemall.com>',
-      to: 'contactus@mariettaantiquemall.com',
-      replyTo: email,
-      subject: `Dealer Application - ${dealerName}`,
-      html: emailHtml,
-    })
+    const FROM = 'Marietta Antique Mall <applications@mariettaantiquemall.com>'
 
-    if (error) {
-      throw new Error(error.message)
+    // The applicant confirmation only goes out if we actually have an address to
+    // send it to — the form is client-validated, but this route never was.
+    const sends: Promise<unknown>[] = [
+      resendClient.emails.send({
+        from: FROM,
+        to: 'contactus@mariettaantiquemall.com',
+        replyTo: email,
+        subject: `Dealer Application - ${dealerName}`,
+        html: emailHtml,
+      }),
+    ]
+
+    const sendsConfirmation = isValidEmail(email)
+    if (sendsConfirmation) {
+      sends.push(
+        resendClient.emails.send({
+          from: FROM,
+          to: email.trim(),
+          subject: `We received your application — ${MALL_NAME}`,
+          html: vendorConfirmationHtml(dealerName),
+        })
+      )
+    }
+
+    const [staffResult, confirmationResult] = await Promise.allSettled(sends)
+
+    // Only the staff notification is critical — it carries the application.
+    if (staffResult.status === 'rejected') {
+      throw new Error(
+        staffResult.reason instanceof Error ? staffResult.reason.message : 'Application email failed'
+      )
+    }
+    const staffResponse = staffResult.value as { data?: { id?: string }; error?: { message: string } }
+    if (staffResponse.error) {
+      throw new Error(staffResponse.error.message)
+    }
+    const data = staffResponse.data
+
+    if (sendsConfirmation && confirmationResult) {
+      const failed =
+        confirmationResult.status === 'rejected' ||
+        (confirmationResult.value as { error?: unknown }).error
+      if (failed) {
+        console.error('dealer-application: confirmation to applicant failed', confirmationResult)
+      }
+    } else if (!sendsConfirmation) {
+      console.warn('dealer-application: no valid applicant email, confirmation skipped')
     }
 
     return NextResponse.json(
