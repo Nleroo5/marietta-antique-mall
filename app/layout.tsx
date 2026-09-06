@@ -3,6 +3,7 @@ import Script from 'next/script'
 import { Crete_Round, Inter, Montserrat } from 'next/font/google'
 import './globals.css'
 import Header from '@/components/layout/Header'
+import AwardVoteBar from '@/components/layout/AwardVoteBar'
 import Footer from '@/components/layout/Footer'
 import { BUSINESS_NAME, LOCATION, SEO_KEYWORDS, GOOGLE_MAPS_URL } from '@/lib/constants'
 
@@ -471,6 +472,7 @@ export default function RootLayout({
           />
         </noscript>
 
+        <AwardVoteBar />
         <Header />
         <main id="main-content">{children}</main>
         <Footer />
