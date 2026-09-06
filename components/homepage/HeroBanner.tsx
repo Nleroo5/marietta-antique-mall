@@ -67,12 +67,22 @@ export default function HeroBanner() {
           animation: shimmer 3s ease-in-out infinite;
         }
       `}</style>
+      {/*
+        The poster is the hero's LCP element on any connection too slow to
+        decode the video promptly. React hoists this into <head>, so the
+        browser fetches it at high priority instead of queueing it behind the
+        page's other assets. It lives here rather than in the root layout so
+        only the homepage pays for it.
+      */}
+      <link rel="preload" as="image" href="/images/hero-poster.webp" fetchPriority="high" />
+
       {/* Video Background - Works on all devices */}
       <video
         autoPlay
         muted
         loop
         playsInline
+        poster="/images/hero-poster.webp"
         className="absolute inset-0 w-full h-full object-cover"
         onLoadedData={() => setIsVideoLoaded(true)}
       >
