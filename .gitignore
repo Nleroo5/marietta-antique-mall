@@ -39,4 +39,6 @@ next-env.d.ts
 # large video files (stored in Vercel)
 public/videos/drone.mp4
 public/videos/drone-visit-original.mp4
-public/videos/*.webm
+# drone-optimized.webm is now 1.8MB and must ship, or the <source> 404s
+# and every visitor falls back to the mp4. Only the unused 12MB copy stays out.
+public/videos/drone-visit.webm
