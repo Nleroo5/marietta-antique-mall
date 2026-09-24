@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion, useInView } from 'framer-motion'
 import { BUSINESS_NAME, CONTACT_INFO } from '@/lib/constants'
 import Button from '@/components/ui/Button'
 import Card, { CardBody } from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
+import { HONEYPOT_FIELD, RENDERED_AT_FIELD } from '@/lib/spam-guard'
 
 export default function VendorsPage() {
   const formRef = useRef<HTMLFormElement>(null)
@@ -13,6 +14,13 @@ export default function VendorsPage() {
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [showExperience, setShowExperience] = useState(false)
   const applicationRef = useRef(null)
+  // Stamped after mount rather than during render, so the server and client
+  // never disagree on the value. A script POSTing straight to the endpoint
+  // never runs this, and the route rejects submissions without it.
+  const renderedAtRef = useRef<number | null>(null)
+  useEffect(() => {
+    renderedAtRef.current = Date.now()
+  }, [])
   const isInView = useInView(applicationRef, { once: true })
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -22,6 +30,9 @@ export default function VendorsPage() {
 
     try {
       const formData = new FormData(e.currentTarget)
+      if (renderedAtRef.current !== null) {
+        formData.set(RENDERED_AT_FIELD, String(renderedAtRef.current))
+      }
 
       const response = await fetch('/api/dealer-application', {
         method: 'POST',
@@ -695,6 +706,27 @@ export default function VendorsPage() {
               <Card className="!border !border-green-700 transition-all duration-300 hover:shadow-xl hover:-translate-y-2">
                 <CardBody className="p-6 md:p-8">
                   <form ref={formRef} onSubmit={handleSubmit} className="space-y-6">
+                    {/*
+                      Honeypot. Positioned off-screen rather than display:none,
+                      because some bots skip inputs they can tell are hidden.
+                      Invisible and unreachable for people; anything typed here
+                      means the submission was filled by a script.
+                    */}
+                    <div
+                      aria-hidden="true"
+                      style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, overflow: 'hidden' }}
+                    >
+                      <label htmlFor={HONEYPOT_FIELD}>Company website (leave this field empty)</label>
+                      <input
+                        type="text"
+                        id={HONEYPOT_FIELD}
+                        name={HONEYPOT_FIELD}
+                        tabIndex={-1}
+                        autoComplete="off"
+                        defaultValue=""
+                      />
+                    </div>
+
                     {/* Personal Information */}
                     <div>
                       <h3 className="font-display text-xl font-bold text-black mb-4 pb-2 border-b-2 border-mauve">

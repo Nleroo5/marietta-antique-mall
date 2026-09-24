@@ -5,6 +5,8 @@ import {
   isValidEmail,
   vendorConfirmationHtml,
 } from '@/lib/transactional-emails'
+import { rateLimit } from '@/lib/rate-limit'
+import { HONEYPOT_FIELD, RENDERED_AT_FIELD, isAllowedOrigin, screenSubmission } from '@/lib/spam-guard'
 
 // Lazy initialization to avoid build-time errors
 let resend: Resend | null = null
@@ -17,6 +19,27 @@ function getResendClient() {
 
 export async function POST(request: NextRequest) {
   try {
+    const origin = request.headers.get('origin') || request.headers.get('referer') || ''
+    if (!isAllowedOrigin(origin)) {
+      console.warn('dealer-application: rejected (bad origin)')
+      return NextResponse.json({ success: true, message: 'Application submitted successfully' }, { status: 200 })
+    }
+
+    const { success: withinRate } = await rateLimit(request, {
+      prefix: 'dealer-application',
+      // Generous on purpose: the honeypot and timing checks do the real work,
+      // so this only needs to stop bursts. A person who double-clicks submit
+      // or retries after an error must never be silently swallowed.
+      limit: 5,
+      window: '10 m',
+    })
+    if (!withinRate) {
+      // Deliberately shaped like success: a bot that sees a 429 retries or
+      // adapts, whereas one that believes it succeeded moves on.
+      console.warn('dealer-application: rate limited')
+      return NextResponse.json({ success: true, message: 'Application submitted successfully' }, { status: 200 })
+    }
+
     // Check if API key is configured
     if (!process.env.RESEND_API_KEY) {
       return NextResponse.json(
@@ -43,6 +66,31 @@ export async function POST(request: NextRequest) {
     const spaceNeeded = formData.get('spaceNeeded') as string
     const moveInMonth = formData.get('moveInMonth') as string
     const additionalComments = formData.get('additionalComments') as string
+
+    const verdict = screenSubmission({
+      dealerName,
+      email,
+      phone,
+      merchandiseType,
+      businessName,
+      previousMalls,
+      additionalComments,
+      honeypot: formData.get(HONEYPOT_FIELD) as string | null,
+      renderedAt: formData.get(RENDERED_AT_FIELD) as string | null,
+    })
+
+    if (verdict.action === 'reject') {
+      // Silently discarded. Nothing is emailed -- critically, no confirmation
+      // goes to the address in the form, which for this spam wave is a real
+      // third party's harvested address, not the sender's.
+      console.warn(`dealer-application: rejected (${verdict.reason})`)
+      return NextResponse.json({ success: true, message: 'Application submitted successfully' }, { status: 200 })
+    }
+
+    const isSuspect = verdict.action === 'flag'
+    if (isSuspect) {
+      console.warn(`dealer-application: flagged (${verdict.reasons.join('; ')})`)
+    }
 
     // Format move-in month to readable text (e.g., "January 2026")
     const formatMoveInMonth = (dateString: string) => {
@@ -358,12 +406,16 @@ export async function POST(request: NextRequest) {
         from: FROM,
         to: 'contactus@mariettaantiquemall.com',
         replyTo: email,
-        subject: `Dealer Application - ${dealerName}`,
+        subject: isSuspect
+          ? `[LIKELY SPAM] Dealer Application - ${dealerName}`
+          : `Dealer Application - ${dealerName}`,
         html: emailHtml,
       }),
     ]
 
-    const sendsConfirmation = isValidEmail(email)
+    // Never confirm a flagged submission: the address is more likely a
+    // harvested third party's than the submitter's own.
+    const sendsConfirmation = !isSuspect && isValidEmail(email)
     if (sendsConfirmation) {
       sends.push(
         resendClient.emails.send({

@@ -54,19 +54,49 @@ function getLimiter(prefix: string, tokens: number, window: Duration): Ratelimit
   return limiter
 }
 
+function windowToMs(window: Duration): number {
+  const [amount, unit] = window.split(' ') as [string, string]
+  const scale: Record<string, number> = { ms: 1, s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 }
+  return Number(amount) * (scale[unit] ?? 60_000)
+}
+
+/**
+ * Per-instance fallback used when Upstash is absent.
+ *
+ * It is not shared across serverless instances, so it is weaker than Redis --
+ * but Fluid Compute reuses instances, so a burst from one source still gets
+ * caught. Previously the absence of Upstash meant no limiting whatsoever.
+ */
+const memoryHits = new Map<string, number[]>()
+
+function memoryRateLimit(key: string, limit: number, windowMs: number): RateLimitResult {
+  const now = Date.now()
+  const hits = (memoryHits.get(key) ?? []).filter((t) => now - t < windowMs)
+  hits.push(now)
+  memoryHits.set(key, hits)
+
+  // Keep the map from growing without bound on a long-lived instance.
+  if (memoryHits.size > 5_000) {
+    for (const [k, v] of memoryHits) {
+      if (v.every((t) => now - t >= windowMs)) memoryHits.delete(k)
+    }
+  }
+
+  return { success: hits.length <= limit, limit, remaining: Math.max(0, limit - hits.length) }
+}
+
 export async function rateLimit(
   req: NextRequest,
   { prefix, limit, window }: RateLimitOptions
 ): Promise<RateLimitResult> {
-  // Graceful no-op when Upstash is not configured.
-  if (!process.env.UPSTASH_REDIS_REST_URL) {
-    return { success: true, limit, remaining: limit }
-  }
-
   const ip =
     req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     req.headers.get('x-real-ip') ||
     'unknown'
+
+  if (!process.env.UPSTASH_REDIS_REST_URL) {
+    return memoryRateLimit(`${prefix}:${ip}`, limit, windowToMs(window))
+  }
 
   try {
     const result = await getLimiter(prefix, limit, window).limit(ip)
