@@ -4,14 +4,25 @@ import { useState, useRef, useEffect } from 'react'
 import { motion, useInView } from 'framer-motion'
 import Image from 'next/image'
 import Button from '@/components/ui/Button'
+import { CONTACT_INFO } from '@/lib/constants'
+import { HONEYPOT_FIELD, RENDERED_AT_FIELD } from '@/lib/spam-guard'
 
 export default function NewsletterSignup() {
   const [email, setEmail] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [isMobile, setIsMobile] = useState(false)
   const ref = useRef(null)
+  const honeypotRef = useRef<HTMLInputElement>(null)
+  // The subscribe route discards posts that arrive without this or too soon
+  // after it, which is what a script hitting the endpoint directly looks like.
+  const renderedAtRef = useRef<number | null>(null)
   const isInView = useInView(ref, { once: true, margin: "-100px" })
+
+  useEffect(() => {
+    renderedAtRef.current = Date.now()
+  }, [])
 
   useEffect(() => {
     const checkMobile = () => {
@@ -27,11 +38,37 @@ export default function NewsletterSignup() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
+    setError(null)
 
-    // Simulate API call - Replace with actual newsletter signup logic
-    await new Promise((resolve) => setTimeout(resolve, 1000))
+    try {
+      const response = await fetch('/api/newsletter/subscribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email,
+          source: 'homepage',
+          [HONEYPOT_FIELD]: honeypotRef.current?.value ?? '',
+          [RENDERED_AT_FIELD]: renderedAtRef.current !== null ? String(renderedAtRef.current) : '',
+        }),
+      })
 
-    // Track GA4 lead conversion
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        setError(
+          data.code === 'INVALID_EMAIL'
+            ? 'Please enter a valid email address.'
+            : `We couldn't sign you up just now. Please try again, or email us at ${CONTACT_INFO.email}.`
+        )
+        setIsSubmitting(false)
+        return
+      }
+    } catch {
+      setError(`We couldn't sign you up just now. Please try again, or email us at ${CONTACT_INFO.email}.`)
+      setIsSubmitting(false)
+      return
+    }
+
+    // Track GA4 lead conversion, only once the signup has actually gone through
     if (typeof window !== 'undefined' && (window as any).gtag) {
       (window as any).gtag('event', 'generate_lead', {
         lead_type: 'newsletter',
@@ -116,6 +153,27 @@ export default function NewsletterSignup() {
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="max-w-xl mx-auto">
+                {/*
+                  Honeypot, same as the vendor form. Off-screen rather than
+                  display:none, because some bots skip inputs they can tell are
+                  hidden. Anything typed here means a script filled the form.
+                */}
+                <div
+                  aria-hidden="true"
+                  style={{ position: 'absolute', left: '-9999px', width: 1, height: 1, overflow: 'hidden' }}
+                >
+                  <label htmlFor={`newsletter-${HONEYPOT_FIELD}`}>Company website (leave this field empty)</label>
+                  <input
+                    ref={honeypotRef}
+                    type="text"
+                    id={`newsletter-${HONEYPOT_FIELD}`}
+                    name={HONEYPOT_FIELD}
+                    tabIndex={-1}
+                    autoComplete="off"
+                    defaultValue=""
+                  />
+                </div>
+
                 <div className="flex flex-col sm:flex-row gap-3">
                   <input
                     type="email"
@@ -161,6 +219,11 @@ export default function NewsletterSignup() {
                     )}
                   </Button>
                 </div>
+                {error && (
+                  <p role="alert" className="text-sm text-red-700 mt-3 text-center">
+                    {error}
+                  </p>
+                )}
                 <p className="text-xs text-black mt-3 text-center">
                   We respect your privacy. Unsubscribe at any time.
                 </p>

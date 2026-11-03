@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import Button from '@/components/ui/Button'
+import { RENDERED_AT_FIELD } from '@/lib/spam-guard'
 
 interface NewsletterModalProps {
   delayMs?: number
@@ -18,6 +19,8 @@ export default function NewsletterModal({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [mounted, setMounted] = useState(false)
+  // The subscribe route discards posts that carry no render timestamp.
+  const openedAtRef = useRef<number | null>(null)
 
   useEffect(() => {
     setMounted(true)
@@ -39,6 +42,7 @@ export default function NewsletterModal({
 
     // Show modal after delay
     const timer = setTimeout(() => {
+      openedAtRef.current = Date.now()
       setIsOpen(true)
     }, delayMs)
 
@@ -70,7 +74,11 @@ export default function NewsletterModal({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({
+          email,
+          source: 'popup',
+          [RENDERED_AT_FIELD]: openedAtRef.current !== null ? String(openedAtRef.current) : '',
+        }),
       })
 
       const data = await response.json()

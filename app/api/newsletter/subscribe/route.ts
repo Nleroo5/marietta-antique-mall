@@ -1,5 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
+import { escapeHtml, isValidEmail } from '@/lib/transactional-emails'
+import { rateLimit } from '@/lib/rate-limit'
+import { HONEYPOT_FIELD, RENDERED_AT_FIELD, isAllowedOrigin } from '@/lib/spam-guard'
+
+/**
+ * Newsletter signups. There is no mailing-list service behind this: each
+ * signup is emailed to the mall's inbox as a "New Newsletter Subscriber"
+ * notice, the same inbox that receives vendor applications.
+ *
+ * Because a public form here puts mail straight into that inbox, it gets the
+ * same screening as the vendor application form: origin, rate limit, honeypot,
+ * and a render timestamp that a direct POST to this endpoint never has.
+ */
+
+// One email field and a button. Scrolling down to the form alone takes longer
+// than this; a script posting the moment the page loads does not.
+const MIN_FILL_MS = 2_000
+
+const SOURCE_LABELS: Record<string, string> = {
+  homepage: 'the homepage newsletter form',
+  popup: 'the website newsletter popup',
+}
 
 // Lazy initialization to avoid build-time errors
 let resend: Resend | null = null
@@ -10,17 +32,48 @@ function getResendClient() {
   return resend
 }
 
+// Deliberately shaped like success: a bot that sees a rejection retries or
+// adapts, whereas one that believes it succeeded moves on.
+function quietSuccess(reason: string) {
+  console.warn(`newsletter: rejected (${reason})`)
+  return NextResponse.json({ success: true, message: 'Successfully subscribed to newsletter' }, { status: 200 })
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { email } = await request.json()
+    const origin = request.headers.get('origin') || request.headers.get('referer') || ''
+    if (!isAllowedOrigin(origin)) return quietSuccess('bad origin')
 
-    // Validate email
-    if (!email || !email.includes('@')) {
+    // Generous on purpose: the honeypot and timing checks do the real work, and
+    // a rate-limited request is silently dropped, so this must never catch a
+    // real person, even on a carrier IP shared by many phones.
+    const { success: withinRate } = await rateLimit(request, {
+      prefix: 'newsletter',
+      limit: 10,
+      window: '10 m',
+    })
+    if (!withinRate) return quietSuccess('rate limited')
+
+    const body = await request.json().catch(() => null)
+    const email = typeof body?.email === 'string' ? body.email.trim() : ''
+
+    // A real person can mistype, so this one is answered honestly.
+    if (!isValidEmail(email) || email.length > 254) {
       return NextResponse.json(
-        { error: 'Valid email address is required' },
+        { error: 'Please enter a valid email address.', code: 'INVALID_EMAIL' },
         { status: 400 }
       )
     }
+
+    const honeypot = body?.[HONEYPOT_FIELD]
+    if (typeof honeypot === 'string' && honeypot.trim() !== '') return quietSuccess('honeypot filled')
+
+    const renderedAt = Number(body?.[RENDERED_AT_FIELD])
+    if (!body?.[RENDERED_AT_FIELD] || !Number.isFinite(renderedAt)) {
+      return quietSuccess('missing form timestamp')
+    }
+    const elapsed = Date.now() - renderedAt
+    if (elapsed < MIN_FILL_MS) return quietSuccess(`submitted in ${elapsed}ms`)
 
     // Check if API key is configured
     if (!process.env.RESEND_API_KEY) {
@@ -32,6 +85,9 @@ export async function POST(request: NextRequest) {
         { status: 503 }
       )
     }
+
+    const sourceLabel = SOURCE_LABELS[body?.source] ?? 'the website'
+    const safeEmail = escapeHtml(email)
 
     // Format email HTML
     const emailHtml = `
@@ -111,10 +167,10 @@ export async function POST(request: NextRequest) {
             <div class="content">
               <h1 class="title">New Newsletter Subscriber</h1>
               <div class="email-box">
-                ${email}
+                ${safeEmail}
               </div>
               <p style="text-align: center; color: #666; margin-top: 20px;">
-                Subscribed via website newsletter popup
+                Subscribed via ${sourceLabel}
               </p>
             </div>
             <div class="footer">
@@ -127,7 +183,7 @@ export async function POST(request: NextRequest) {
                   hour: 'numeric',
                   minute: '2-digit',
                   hour12: true
-                })} EST</span>
+                })} ET</span>
               </p>
               <p style="margin: 6px 0 0 0;">
                 Via <a href="https://www.mariettaantiquemall.com" style="color: #D4C4B0;">www.mariettaantiquemall.com</a>
@@ -144,7 +200,7 @@ export async function POST(request: NextRequest) {
       throw new Error('Email service is not available')
     }
 
-    const { data, error } = await resendClient.emails.send({
+    const { error } = await resendClient.emails.send({
       from: 'Marietta Antique Mall <newsletter@mariettaantiquemall.com>',
       to: 'contactus@mariettaantiquemall.com',
       replyTo: email,
