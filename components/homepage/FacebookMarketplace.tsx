@@ -1,148 +1,60 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
-import Script from 'next/script'
-import { CONTACT_INFO } from '@/lib/constants'
-import Button from '@/components/ui/Button'
+import Image from 'next/image'
+import { BUSINESS_NAME, CONTACT_INFO } from '@/lib/constants'
+
+/**
+ * Homepage "Follow Us on Facebook" card.
+ *
+ * This used to embed Facebook's Page Plugin timeline. Facebook stopped serving
+ * that timeline (checked 3 Nov 2026): the plugin renders only the page header
+ * and its feed request fails with error 1357032, for logged-out visitors too and
+ * even for facebook.com/facebook itself. Every visitor saw a 131px header stub.
+ *
+ * The card is built here instead, so it renders without Facebook's SDK, which
+ * also drops several hundred KB of third-party script from the homepage. The
+ * Meta Pixel in the root layout is separate and unaffected.
+ */
+
+const PHOTOS = [
+  {
+    src: '/images/vendors/antique-store-marietta-vintage-collectibles-mall-15.webp',
+    alt: 'Vintage UGA bulldog figure in a red jersey',
+  },
+  {
+    src: '/images/vendors/marietta-antique-store-vintage-finds-interior-27.webp',
+    alt: 'Vintage Coca-Cola cooler and advertising signs in a vendor booth',
+  },
+  {
+    src: '/images/vendors/atlanta-antique-store-marietta-vintage-treasures-06.webp',
+    alt: 'Carved wooden antique wall clock',
+  },
+  {
+    src: '/images/vendors/marietta-antique-mall-vintage-store-interior-01.webp',
+    alt: 'Set of vintage painted kitchen canisters',
+  },
+]
+
+function FacebookIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+    </svg>
+  )
+}
 
 export default function FacebookMarketplace() {
-  const [isLoaded, setIsLoaded] = useState(false)
-  const [hasError, setHasError] = useState(false)
-  const [isWidgetRendered, setIsWidgetRendered] = useState(false)
-  const [isVisible, setIsVisible] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const parseAttemptRef = useRef(0)
-  const mountTimeRef = useRef(Date.now())
-
-  // Intersection Observer for lazy loading
-  useEffect(() => {
-    if (!containerRef.current) return
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            setIsVisible(true)
-          }
-        })
-      },
-      { rootMargin: '50px' }
-    )
-
-    observer.observe(containerRef.current)
-
-    return () => {
-      if (containerRef.current) {
-        observer.unobserve(containerRef.current)
-      }
+  const handleFollowClick = () => {
+    if (typeof window !== 'undefined' && (window as any).gtag) {
+      (window as any).gtag('event', 'facebook_follow_click', {
+        event_category: 'Facebook',
+        event_label: 'Homepage card',
+      })
     }
-  }, [])
-
-  // Reset state when component mounts (important for navigation)
-  useEffect(() => {
-    // Update mount time on each mount
-    mountTimeRef.current = Date.now()
-
-    // Reset states for fresh render on each mount
-    setIsLoaded(false)
-    setHasError(false)
-    setIsWidgetRendered(false)
-    parseAttemptRef.current = 0
-
-    // Check if FB SDK is already loaded from previous page visit
-    if (window.FB && isVisible) {
-      setIsLoaded(true)
-      // Force immediate parse since SDK is already available
-      setTimeout(() => {
-        if (window.FB && containerRef.current) {
-          try {
-            window.FB.XFBML.parse(containerRef.current)
-            setIsWidgetRendered(true)
-          } catch (error) {
-            console.error('Error parsing Facebook widget on remount:', error)
-          }
-        }
-      }, 100)
-    }
-
-    // Cleanup function when component unmounts
-    return () => {
-      // Clear any pending timers
-      setIsLoaded(false)
-      setHasError(false)
-      setIsWidgetRendered(false)
-    }
-  }, [isVisible]) // Re-run when visibility changes
-
-  useEffect(() => {
-    // Set a timeout to show error state if Facebook SDK doesn't load
-    const timer = setTimeout(() => {
-      if (!isLoaded) {
-        setHasError(true)
-      }
-    }, 15000)
-
-    return () => clearTimeout(timer)
-  }, [isLoaded])
-
-  useEffect(() => {
-    // Parse Facebook widgets when SDK loads
-    if (isLoaded && window.FB && !hasError && !isWidgetRendered && containerRef.current) {
-      parseAttemptRef.current++
-
-      // Wait for DOM to be ready
-      const timeoutId = setTimeout(() => {
-        try {
-          if (window.FB && containerRef.current) {
-            // Parse only this container, not entire page
-            window.FB.XFBML.parse(containerRef.current)
-            setIsWidgetRendered(true)
-          }
-        } catch (error) {
-          console.error('Error parsing Facebook widgets:', error)
-
-          // Retry once more if first attempt fails
-          if (parseAttemptRef.current === 1) {
-            setTimeout(() => {
-              try {
-                if (window.FB && containerRef.current) {
-                  window.FB.XFBML.parse(containerRef.current)
-                  setIsWidgetRendered(true)
-                }
-              } catch (retryError) {
-                console.error('Retry parse failed:', retryError)
-                setHasError(true)
-              }
-            }, 2000)
-          }
-        }
-      }, 500)
-
-      return () => clearTimeout(timeoutId)
-    }
-  }, [isLoaded, hasError, isWidgetRendered])
-
-  const handleScriptLoad = () => {
-    setIsLoaded(true)
-    setHasError(false)
-  }
-
-  const handleScriptError = () => {
-    setHasError(true)
-    setIsLoaded(false)
-  }
-
-  const handleRetry = () => {
-    setHasError(false)
-    setIsLoaded(false)
-    setIsWidgetRendered(false)
-
-    // Reload the page to reset Facebook SDK
-    window.location.reload()
   }
 
   return (
-    <div id="facebook-marketplace" className="h-full flex flex-col" ref={containerRef}>
+    <div id="facebook-marketplace" className="h-full flex flex-col">
       <div className="text-center mb-8">
         <h2 className="font-display text-2xl md:text-3xl font-bold text-black mb-3">
           Follow Us on Facebook
@@ -152,122 +64,56 @@ export default function FacebookMarketplace() {
         </p>
       </div>
 
-      {/* Facebook SDK - Only load when visible */}
-      {isVisible && (
-        <>
-          <div id="fb-root" />
-          <Script
-            src="https://connect.facebook.net/en_US/sdk.js#xfbml=1&version=v19.0"
-            strategy="lazyOnload"
-            onLoad={handleScriptLoad}
-            onError={handleScriptError}
-          />
-        </>
-      )}
-
-            {/* Loading State */}
-            {(!isLoaded || !isVisible) && !hasError && (
-              <div className="flex justify-center">
-                <div className="w-full max-w-[500px]">
-                  <div className="bg-white rounded-xl shadow-lg overflow-hidden border-2 border-mauve animate-pulse">
-                    <div className="bg-gray-200 h-[700px]" />
-                  </div>
-                  <div className="flex justify-center mt-4">
-                    <div className="text-black text-sm">
-                      {isVisible ? 'Loading Facebook feed...' : 'Scroll down to load Facebook feed...'}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Error State */}
-            {hasError && (
-              <div className="flex justify-center">
-                <div className="w-full max-w-[500px]">
-                  <div className="bg-white rounded-xl shadow-lg p-8 border-2 border-mauve">
-                    <svg
-                      className="w-12 h-12 text-black mx-auto mb-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    <h4 className="font-display text-xl font-bold text-black mb-2 text-center">
-                      Unable to Load Facebook Feed
-                    </h4>
-                    <p className="text-black text-sm mb-6 text-center">
-                      Visit our Facebook page directly or try reloading the feed.
-                    </p>
-                    <div className="flex flex-col sm:flex-row gap-3 justify-center">
-                      <Button
-                        variant="secondary"
-                        size="md"
-                        onClick={handleRetry}
-                      >
-                        Retry Loading
-                      </Button>
-                      <Button
-                        variant="primary"
-                        size="md"
-                        onClick={() =>
-                          window.open(CONTACT_INFO.facebook, '_blank')
-                        }
-                      >
-                        Visit Facebook Page
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Facebook Page Plugin */}
-            <div
-              className={`flex justify-center ${!isLoaded || hasError ? 'hidden' : ''}`}
-            >
-              <div className="w-full max-w-[500px]">
-                <div className="bg-white rounded-xl shadow-lg overflow-hidden border-2 border-mauve">
-                  <div
-                    className="fb-page"
-                    data-href={CONTACT_INFO.facebook}
-                    data-tabs="timeline"
-                    data-width="500"
-                    data-height="700"
-                    data-small-header="false"
-                    data-adapt-container-width="true"
-                    data-hide-cover="false"
-                    data-show-facepile="true"
-                  >
-                    <blockquote
-                      cite={CONTACT_INFO.facebook}
-                      className="fb-xfbml-parse-ignore"
-                    >
-                      <a href={CONTACT_INFO.facebook}>
-                        Marietta Antique Mall
-                      </a>
-                    </blockquote>
-                  </div>
-                </div>
-              </div>
+      <div className="flex justify-center">
+        <div className="w-full max-w-[500px] overflow-hidden rounded-xl border-2 border-mauve bg-white shadow-lg">
+          {/* Page header */}
+          <div className="flex items-center gap-4 p-5">
+            <Image
+              src="/images/new-logo.png"
+              alt=""
+              width={56}
+              height={56}
+              className="h-14 w-14 shrink-0 rounded-full ring-1 ring-black/10"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-xl text-black">{BUSINESS_NAME}</p>
+              <p className="text-sm text-charcoal-light">10K+ followers on Facebook</p>
             </div>
+            <FacebookIcon className="h-8 w-8 shrink-0 text-[#1877F2]" />
+          </div>
+
+          {/* Photos from the mall floor */}
+          <div className="grid grid-cols-2 gap-1">
+            {PHOTOS.map((photo) => (
+              <div key={photo.src} className="relative aspect-[4/3] bg-champagne">
+                <Image
+                  src={photo.src}
+                  alt={photo.alt}
+                  fill
+                  sizes="(min-width: 768px) 250px, 50vw"
+                  className="object-cover"
+                />
+              </div>
+            ))}
+          </div>
+
+          <div className="p-5 md:p-6">
+            <p className="mb-5 text-base text-charcoal">
+              We post new arrivals, vendor finds, and event news on our Facebook page.
+            </p>
+            <a
+              href={CONTACT_INFO.facebook}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={handleFollowClick}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#1877F2] px-6 py-3 font-semibold text-white transition-colors hover:bg-[#166FE5] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#1877F2] focus-visible:ring-offset-2"
+            >
+              <FacebookIcon className="h-5 w-5" />
+              Follow us on Facebook
+            </a>
+          </div>
+        </div>
+      </div>
     </div>
   )
-}
-
-// Type declaration for Facebook SDK
-declare global {
-  interface Window {
-    FB?: {
-      XFBML: {
-        parse: (element?: HTMLElement) => void
-      }
-    }
-  }
 }
