@@ -1,0 +1,19 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Marietta Antique Mall//Holiday Open House 2026//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+BEGIN:VEVENT
+UID:holiday-open-house-2026@mariettaantiquemall.com
+DTSTAMP:20261103T150000Z
+DTSTART:20261114T150000Z
+DTEND:20261115T000000Z
+SUMMARY:Holiday Open House at Marietta Antique Mall
+LOCATION:Marietta Antique Mall\, 1477 Roswell Rd\, Suite 100\, Marietta\, G
+ A 30062
+DESCRIPTION:All vendors 10-50% off. Pet photos with Santa 11 AM-4 PM\, hot 
+ dog cookout 11 AM-2 PM\, and Furkids pet adoptions.\nhttps://www.mariettaa
+ ntiquemall.com/#holiday-open-house
+URL:https://www.mariettaantiquemall.com/#holiday-open-house
+END:VEVENT
+END:VCALENDAR

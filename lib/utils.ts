@@ -65,6 +65,23 @@ function convertTo24Hour(time: string): string {
   return `${hours.padStart(2, '0')}:${minutes}`
 }
 
+/**
+ * Today's calendar date in Atlanta as an ISO string ('2026-11-14').
+ *
+ * Date-limited promotions run on Atlanta time, so their windows are evaluated
+ * against this rather than the visitor's own timezone or UTC. Comparing ISO
+ * date strings sidesteps daylight-saving offset maths entirely:
+ * '2026-11-03' <= '2026-11-14' is true regardless of where the visitor is.
+ */
+export function easternDate(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now)
+}
+
 // Format date for display
 export function formatDate(date: Date): string {
   return date.toLocaleDateString('en-US', {

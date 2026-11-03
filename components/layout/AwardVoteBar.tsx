@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { easternDate } from '@/lib/utils'
 
 /**
  * Sitewide bar promoting the 2026 Atlanta's Best Awards vote.
@@ -21,22 +22,8 @@ const VOTING_CLOSES = '2026-09-17'
 const DISMISS_KEY = 'mam-atlantas-best-2026-dismissed'
 const MS_PER_DAY = 86_400_000
 
-/**
- * The contest runs on Atlanta time, so the window is evaluated against the
- * calendar date in America/New_York rather than the visitor's own timezone or
- * UTC. Comparing ISO date strings sidesteps daylight-saving offset maths
- * entirely: '2026-09-05' <= '2026-09-17' is true regardless of where the
- * visitor is.
- */
-export function easternDate(now: Date = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/New_York',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(now)
-}
-
+// The contest runs on Atlanta time, so the window is checked against
+// easternDate() rather than the visitor's own timezone or UTC.
 export function getVoteBarState(etDate: string): { visible: boolean; daysLeft: number } {
   const visible = etDate >= VOTING_OPENS && etDate <= VOTING_CLOSES
   const daysLeft = Math.round((Date.parse(VOTING_CLOSES) - Date.parse(etDate)) / MS_PER_DAY)

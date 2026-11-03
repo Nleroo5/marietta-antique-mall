@@ -4,6 +4,7 @@ import { Crete_Round, Inter, Montserrat } from 'next/font/google'
 import './globals.css'
 import Header from '@/components/layout/Header'
 import AwardVoteBar from '@/components/layout/AwardVoteBar'
+import HolidayOpenHouseBar from '@/components/layout/HolidayOpenHouseBar'
 import Footer from '@/components/layout/Footer'
 import { BUSINESS_NAME, LOCATION, SEO_KEYWORDS, GOOGLE_MAPS_URL } from '@/lib/constants'
 
@@ -473,6 +474,7 @@ export default function RootLayout({
         </noscript>
 
         <AwardVoteBar />
+        <HolidayOpenHouseBar />
         <Header />
         <main id="main-content">{children}</main>
         <Footer />
