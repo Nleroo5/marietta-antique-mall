@@ -8,21 +8,29 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "optimize:images": "node scripts/optimize-images.js"
+    "optimize:images": "node scripts/optimize-images.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "boothmap:generate": "drizzle-kit generate",
+    "boothmap:migrate": "drizzle-kit migrate",
+    "boothmap:seed": "tsx scripts/booth-map/seed.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@mailchimp/mailchimp_marketing": "^3.0.80",
+    "@neondatabase/serverless": "^1.2.1",
     "@types/node": "^24.10.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.0",
     "@vercel/blob": "^2.4.0",
+    "@vercel/functions": "^3.11.2",
     "autoprefixer": "^10.4.21",
     "clsx": "^2.1.1",
+    "drizzle-orm": "^0.45.4",
     "eslint": "^9.39.1",
     "eslint-config-next": "^16.0.1",
     "framer-motion": "^12.23.25",
@@ -37,7 +45,11 @@
     "typescript": "^5.9.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.16",
     "@types/mailchimp__mailchimp_marketing": "^3.0.22",
-    "sharp": "^0.34.5"
+    "drizzle-kit": "^0.31.11",
+    "sharp": "^0.34.5",
+    "tsx": "^4.23.15",
+    "vitest": "^5.1.0"
   }
 }
