@@ -1,9 +1,8 @@
 import { eq, inArray, or } from 'drizzle-orm'
-import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core'
+import type { AnyDb } from './types'
 import * as schema from './schema'
 import { generateToken, hashToken } from './tokens'
 
-type AnyDb = PgDatabase<PgQueryResultHKT, typeof schema>
 
 /**
  * Booth numbers 9001-9003 can't collide with the mall's real booths, and is_test

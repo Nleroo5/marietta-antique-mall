@@ -15,6 +15,11 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'scontent.xx.fbcdn.net',
       },
+      {
+        // Booth map vendor photos (Vercel Blob public store)
+        protocol: 'https',
+        hostname: '*.public.blob.vercel-storage.com',
+      },
     ],
   },
   // Enable React strict mode

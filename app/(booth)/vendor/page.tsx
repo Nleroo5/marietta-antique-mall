@@ -1,0 +1,40 @@
+import { cookies } from 'next/headers'
+import { getDb } from '@/lib/booth-map/db'
+import { resolveSession, VENDOR_COOKIE } from '@/lib/booth-map/access'
+import { countLiveItems } from '@/lib/booth-map/items'
+import VendorApp from '@/components/booth-map/VendorApp'
+
+export const dynamic = 'force-dynamic'
+
+/**
+ * A vendor's private page. Shows nothing about any vendor until the device cookie
+ * checks out (SPEC 9: "Nothing before auth").
+ */
+export default async function VendorPage() {
+  const db = getDb()
+  const session = await resolveSession(db, (await cookies()).get(VENDOR_COOKIE)?.value)
+
+  if (!session) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-6 text-center">
+        <div className="max-w-sm">
+          <p className="font-display text-2xl">Marietta Antique Mall</p>
+          <p className="mt-3 text-base">
+            Open this page by scanning the QR code on your vendor card. If you don&apos;t have a card, ask at the front desk.
+          </p>
+        </div>
+      </main>
+    )
+  }
+
+  const liveCount = await countLiveItems(db, session.vendorId)
+  return (
+    <VendorApp
+      vendorId={session.vendorId}
+      displayName={session.displayName}
+      booths={session.booths.map((b) => b.number)}
+      liveCount={liveCount}
+      needsConsent={!session.consentAt}
+    />
+  )
+}
