@@ -4,8 +4,9 @@
  * also drops EXIF data, including GPS location.
  *
  * iPhone Safari already hands the page a JPEG because the file input only accepts
- * JPEG, PNG and WebP. The HEIC decoder (about 3 MB) loads only if a HEIC file still
- * arrives, mostly from desktop drag and drop.
+ * JPEG, PNG and WebP. The browser's own decoder is always tried first (Safari 17+
+ * reads HEIC natively). The HEIC decoder (about 3 MB) loads only when that fails
+ * for a file that looks like HEIC, mostly from desktop drag and drop.
  */
 import { MAX_PHOTO_EDGE } from './blob'
 
@@ -16,14 +17,10 @@ export interface PreparedPhoto {
 }
 
 const JPEG_QUALITY = 0.82
+const UNREADABLE = 'This photo could not be read. Try another one.'
 
 function looksLikeHeic(file: File): boolean {
-  return /image\/hei[cf]/i.test(file.type) || /\.(heic|heif)$/i.test(file.name)
-}
-
-async function heicToJpeg(file: Blob): Promise<Blob> {
-  const { heicTo } = await import('heic-to/next')
-  return heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 })
+  return /image\/hei[cf]/i.test(file.type) || /\.(heic|heif)$/i.test(file.name) || file.type === ''
 }
 
 function loadImage(blob: Blob): Promise<HTMLImageElement> {
@@ -38,27 +35,28 @@ function loadImage(blob: Blob): Promise<HTMLImageElement> {
       URL.revokeObjectURL(url)
       reject(new Error('decode failed'))
     }
-    // Modern browsers apply the photo's EXIF rotation to <img> and to canvas drawing.
+    // Current browsers apply the photo's EXIF rotation to <img> and to canvas drawing.
     img.src = url
   })
 }
 
-export async function preparePhoto(file: File): Promise<PreparedPhoto> {
-  let source: Blob = file
-  if (looksLikeHeic(file)) source = await heicToJpeg(file)
-
-  let img: HTMLImageElement
+async function decode(file: File): Promise<HTMLImageElement> {
   try {
-    img = await loadImage(source)
+    return await loadImage(file)
   } catch {
-    // Some files arrive as HEIC with a missing or wrong type.
-    if (source !== file) throw new Error('This photo could not be read. Try another one.')
-    try {
-      img = await loadImage(await heicToJpeg(file))
-    } catch {
-      throw new Error('This photo could not be read. Try another one.')
-    }
+    if (!looksLikeHeic(file)) throw new Error(UNREADABLE)
   }
+  try {
+    const { heicTo } = await import('heic-to/next')
+    return await loadImage(await heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 }))
+  } catch {
+    throw new Error(UNREADABLE)
+  }
+}
+
+export async function preparePhoto(file: File): Promise<PreparedPhoto> {
+  if (file.type && !file.type.startsWith('image/')) throw new Error(UNREADABLE)
+  const img = await decode(file)
 
   const scale = Math.min(1, MAX_PHOTO_EDGE / Math.max(img.naturalWidth, img.naturalHeight))
   const width = Math.max(1, Math.round(img.naturalWidth * scale))
@@ -68,10 +66,24 @@ export async function preparePhoto(file: File): Promise<PreparedPhoto> {
   canvas.height = height
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('This phone could not process the photo.')
+  ctx.fillStyle = '#ffffff' // JPEG has no transparency; PNGs would otherwise turn black
+  ctx.fillRect(0, 0, width, height)
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(img, 0, 0, width, height)
 
   const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/jpeg', JPEG_QUALITY))
   canvas.width = canvas.height = 0 // release memory on phones
   if (!blob) throw new Error('This phone could not process the photo.')
   return { blob, width, height }
+}
+
+/** crypto.randomUUID only exists on https; this works on plain-http local testing too. */
+export function uuid(): string {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  const b = crypto.getRandomValues(new Uint8Array(16))
+  b[6] = (b[6] & 0x0f) | 0x40
+  b[8] = (b[8] & 0x3f) | 0x80
+  const h = Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
 }

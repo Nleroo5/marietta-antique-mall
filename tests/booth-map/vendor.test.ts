@@ -32,9 +32,11 @@ async function makeVendor(opts: { booths?: string[]; status?: 'active' | 'paused
   return { vendor: v, token, booths }
 }
 
-const photoUrl = (vendorId: string) => `https://abc123.public.blob.vercel-storage.com/booth-map/${vendorId}/${UUID()}-Xy7aB2.jpg`
+const STORE_HOST = 'abc123.public.blob.vercel-storage.com'
+const photoUrl = (vendorId: string) => `https://${STORE_HOST}/booth-map/${vendorId}/${UUID()}.jpg`
 
 beforeAll(async () => {
+  process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_abc123_testsecret'
   db = drizzle(new PGlite(), { schema })
   await migrate(db, { migrationsFolder: './drizzle/booth-map' })
 })
@@ -45,21 +47,22 @@ describe('vendor link sign-in', () => {
     const r = await openVendorLink(anyDb(), token)
     expect(r.ok).toBe(true)
     if (!r.ok) return
-    expect(r.newCookie).toMatch(/^[A-Za-z0-9_-]{43}$/)
-    const s = await resolveSession(anyDb(), r.newCookie)
+    expect(r.created).toBe(true)
+    expect(r.cookie).toMatch(/^[A-Za-z0-9_-]{43}$/)
+    const s = await resolveSession(anyDb(), r.cookie)
     expect(s?.vendorId).toBe(vendor.id)
     expect(s?.booths.map((b) => b.number)).toEqual([booths[0].number])
     const devices = await db.select().from(schema.vendorDevices).where(eq(schema.vendorDevices.vendorId, vendor.id))
     expect(devices).toHaveLength(1)
-    expect(devices[0].deviceCookieHash).toBe(hashToken(r.newCookie!)) // only the hash is stored
+    expect(devices[0].deviceCookieHash).toBe(hashToken(r.cookie)) // only the hash is stored
   })
 
-  it('scanning the card again on the same phone does not add another device', async () => {
+  it('scanning the card again on the same phone adds no device and hands back the same cookie to refresh', async () => {
     const { vendor, token } = await makeVendor()
     const first = await openVendorLink(anyDb(), token)
     if (!first.ok) throw new Error()
-    const again = await openVendorLink(anyDb(), token, first.newCookie)
-    expect(again).toEqual({ ok: true, vendorId: vendor.id, newCookie: null })
+    const again = await openVendorLink(anyDb(), token, first.cookie)
+    expect(again).toEqual({ ok: true, vendorId: vendor.id, cookie: first.cookie, created: false })
     expect(await db.select().from(schema.vendorDevices).where(eq(schema.vendorDevices.vendorId, vendor.id))).toHaveLength(1)
   })
 
@@ -68,10 +71,11 @@ describe('vendor link sign-in', () => {
     const b = await makeVendor()
     const ra = await openVendorLink(anyDb(), a.token)
     if (!ra.ok) throw new Error()
-    const rb = await openVendorLink(anyDb(), b.token, ra.newCookie)
-    expect(rb.ok && rb.newCookie).toBeTruthy()
+    const rb = await openVendorLink(anyDb(), b.token, ra.cookie)
+    expect(rb.ok && rb.created).toBe(true)
     if (!rb.ok) return
-    expect((await resolveSession(anyDb(), rb.newCookie))?.vendorId).toBe(b.vendor.id)
+    expect(rb.cookie).not.toBe(ra.cookie)
+    expect((await resolveSession(anyDb(), rb.cookie))?.vendorId).toBe(b.vendor.id)
   })
 
   it('rejects malformed, unknown and inactive links without creating devices', async () => {
@@ -87,11 +91,11 @@ describe('vendor link sign-in', () => {
     const r = await openVendorLink(anyDb(), token)
     if (!r.ok) throw new Error()
     await db.update(schema.vendors).set({ status: 'paused' }).where(eq(schema.vendors.id, vendor.id))
-    expect(await resolveSession(anyDb(), r.newCookie)).toBeNull()
+    expect(await resolveSession(anyDb(), r.cookie)).toBeNull()
     await db.update(schema.vendors).set({ status: 'active' }).where(eq(schema.vendors.id, vendor.id))
-    expect(await resolveSession(anyDb(), r.newCookie)).not.toBeNull()
+    expect(await resolveSession(anyDb(), r.cookie)).not.toBeNull()
     await db.update(schema.vendorDevices).set({ revokedAt: new Date() }).where(eq(schema.vendorDevices.vendorId, vendor.id))
-    expect(await resolveSession(anyDb(), r.newCookie)).toBeNull()
+    expect(await resolveSession(anyDb(), r.cookie)).toBeNull()
   })
 
   it('resetting a lost link kills the old link and signs out every phone', async () => {
@@ -100,11 +104,11 @@ describe('vendor link sign-in', () => {
     const p2 = await openVendorLink(anyDb(), token)
     if (!p1.ok || !p2.ok) throw new Error()
     const newToken = await resetVendorLink(anyDb(), vendor.id)
-    expect(await resolveSession(anyDb(), p1.newCookie)).toBeNull()
-    expect(await resolveSession(anyDb(), p2.newCookie)).toBeNull()
+    expect(await resolveSession(anyDb(), p1.cookie)).toBeNull()
+    expect(await resolveSession(anyDb(), p2.cookie)).toBeNull()
     expect(await openVendorLink(anyDb(), token)).toEqual({ ok: false, reason: 'unknown' })
     const p3 = await openVendorLink(anyDb(), newToken)
-    expect(p3.ok && (await resolveSession(anyDb(), p3.newCookie))?.vendorId).toBe(vendor.id)
+    expect(p3.ok && (await resolveSession(anyDb(), p3.cookie))?.vendorId).toBe(vendor.id)
   })
 
   it('a garbage or missing cookie resolves to no session', async () => {
@@ -133,7 +137,8 @@ describe('wrong-link counters', () => {
     expect((await recordHit(anyDb(), key, { windowSeconds: 900 })).count).toBe(1)
   })
 
-  it('concurrent hits are all counted', async () => {
+  // PGlite runs these one at a time; this proves the counter math, not database-level concurrency.
+  it('many hits in a row are all counted', async () => {
     const key = counterKey('t', UUID())
     await Promise.all(Array.from({ length: 20 }, () => recordHit(anyDb(), key, { windowSeconds: 900 })))
     expect((await recordHit(anyDb(), key, { windowSeconds: 900 })).count).toBe(21)
@@ -144,24 +149,37 @@ describe('blob paths', () => {
   const v = UUID()
   it('only allows uploads into the vendor’s own folder as <uuid>.jpg', () => {
     expect(isAllowedUploadPathname(`booth-map/${v}/${UUID()}.jpg`, v)).toBe(true)
+    expect(isAllowedUploadPathname([`booth-map/${v}/${UUID()}.jpg`], v)).toBe(false) // array coerced to string
     for (const p of [`booth-map/${UUID()}/${UUID()}.jpg`, `booth-map/${v}/../x.jpg`, `booth-map/${v}/${UUID()}.png`, `other/${v}/${UUID()}.jpg`, `booth-map/${v}/a.jpg`]) {
       expect(isAllowedUploadPathname(p, v)).toBe(false)
     }
   })
-  it('only accepts https Blob URLs in the vendor’s folder', () => {
+  it('only accepts https URLs in our own Blob store, in the vendor’s folder, with no suffix', () => {
     expect(isVendorBlobUrl(photoUrl(v), v)).toBe(true)
-    expect(isVendorBlobUrl(`https://abc.public.blob.vercel-storage.com/booth-map/${v}/${UUID()}.jpg`, v)).toBe(true)
+    expect(isVendorBlobUrl(photoUrl(v).replace('abc123', 'ABC123'), v)).toBe(true) // hostnames are case-insensitive
     for (const u of [
+      `https://otherstore.public.blob.vercel-storage.com/booth-map/${v}/${UUID()}.jpg`, // someone else's store
+      photoUrl(v).replace('.jpg', '-Xy7aB2.jpg'),
+      photoUrl(v).replace(STORE_HOST, STORE_HOST + ':8443'),
       photoUrl(UUID()),
       photoUrl(v).replace('https', 'http'),
       photoUrl(v).replace('public.blob.vercel-storage.com', 'evil.com'),
-      `https://evil.com/?x=.public.blob.vercel-storage.com/booth-map/${v}/${UUID()}.jpg`,
+      `https://evil.com/?x=${STORE_HOST}/booth-map/${v}/${UUID()}.jpg`,
       photoUrl(v) + '?a=1',
       `https://u:p@abc.public.blob.vercel-storage.com/booth-map/${v}/${UUID()}.jpg`,
       'not a url',
     ]) {
       expect(isVendorBlobUrl(u, v)).toBe(false)
     }
+  })
+})
+
+describe('blob store host', () => {
+  it('comes from the store id in the read-write token, and nothing is accepted without one', async () => {
+    const { blobStoreHost } = await import('@/lib/booth-map/blob')
+    expect(blobStoreHost('vercel_blob_rw_932bpWPgg_secret')).toBe('932bpwpgg.public.blob.vercel-storage.com')
+    expect(blobStoreHost('')).toBeNull()
+    expect(isVendorBlobUrl(photoUrl(UUID()), UUID(), null)).toBe(false)
   })
 })
 
@@ -227,15 +245,16 @@ describe('card validation', () => {
 })
 
 describe('photo checks', () => {
-  const cards = [{ url: 'u1' }, { url: 'u2' }, { url: 'u3' }, { url: 'u4' }] as never
-  it('accepts only existing JPEGs of 5 MB or less in our store', async () => {
+  const cards = [{ url: 'u1' }, { url: 'u2' }, { url: 'u3' }, { url: 'u4' }, { url: 'u5' }] as never
+  it('accepts only existing JPEGs of 5 MB or less whose stored URL is exactly the posted one', async () => {
     const errs = await verifyPhotos(cards, async (url) => {
-      if (url === 'u1') return { size: 300_000, contentType: 'image/jpeg' }
-      if (url === 'u2') return { size: 300_000, contentType: 'image/png' }
-      if (url === 'u3') return { size: 6 * 1024 * 1024, contentType: 'image/jpeg' }
+      if (url === 'u1') return { url, size: 300_000, contentType: 'image/jpeg' }
+      if (url === 'u2') return { url, size: 300_000, contentType: 'image/png' }
+      if (url === 'u3') return { url, size: 6 * 1024 * 1024, contentType: 'image/jpeg' }
+      if (url === 'u5') return { url: 'https://elsewhere/u5', size: 300_000, contentType: 'image/jpeg' }
       throw new Error('BlobNotFoundError')
     })
-    expect(errs.map((e) => e.index)).toEqual([1, 2, 3])
+    expect(errs.map((e) => e.index)).toEqual([1, 2, 3, 4])
   })
 })
 
@@ -244,7 +263,7 @@ describe('posting', () => {
     const v = await makeVendor({ booths })
     const r = await openVendorLink(anyDb(), v.token)
     if (!r.ok) throw new Error()
-    return { ...v, session: (await resolveSession(anyDb(), r.newCookie)) as VendorSession }
+    return { ...v, session: (await resolveSession(anyDb(), r.cookie)) as VendorSession }
   }
   const cardFor = (s: VendorSession, over: Record<string, unknown> = {}) => {
     const r = validateCards([{ url: photoUrl(s.vendorId), width: 1600, height: 1200, title: 'Oak desk', price: '640', askInStore: false, ...over }], s)
@@ -292,6 +311,15 @@ describe('posting', () => {
     expect((await createItems(anyDb(), session, cards, { consent: true })).ok).toBe(true)
     expect(await createItems(anyDb(), session, cards, { consent: true })).toMatchObject({ ok: false, code: 'ALREADY_POSTED', indexes: [0] })
     expect(await db.select().from(schema.items).where(eq(schema.items.vendorId, session.vendorId))).toHaveLength(1)
+  })
+
+  it('the database itself refuses a second item with the same photo', async () => {
+    const { session } = await signedIn()
+    const cards = cardFor(session)
+    expect((await createItems(anyDb(), session, cards, { consent: true })).ok).toBe(true)
+    const [it1] = await db.select().from(schema.items).where(eq(schema.items.photoUrl, cards[0].url))
+    const { id: _id, ...copy } = it1
+    await expect(db.insert(schema.items).values(copy)).rejects.toThrow()
   })
 
   it('an upload reported before posting is linked to the item when posted', async () => {

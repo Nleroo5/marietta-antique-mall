@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
 
   const photoErrors = await verifyPhotos(checked.cards, async (url) => {
     const info = await head(url)
-    return { size: info.size, contentType: info.contentType }
+    return { url: info.url, size: info.size, contentType: info.contentType }
   })
   if (photoErrors.length) return json({ error: 'Some photos need to be added again.', errors: photoErrors }, 422)
 

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "items_photo_url_idx" ON "items" USING btree ("photo_url");

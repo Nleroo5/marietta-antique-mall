@@ -105,12 +105,14 @@ export function validateCards(
 }
 
 export interface BlobInfo {
+  url: string
   size: number
   contentType: string
 }
 
 /**
- * Confirms each photo really is in our Blob store, is a JPEG, and is within size.
+ * Confirms each photo really is in our Blob store (the URL Blob reports back must be
+ * exactly the one posted), is a JPEG, and is within size.
  * `headBlob` is @vercel/blob's head(), injected so tests don't need the network.
  */
 export async function verifyPhotos(
@@ -121,7 +123,7 @@ export async function verifyPhotos(
     cards.map(async (card, index): Promise<CardError | null> => {
       try {
         const info = await headBlob(card.url)
-        if (info.contentType !== PHOTO_CONTENT_TYPE || info.size <= 0 || info.size > MAX_PHOTO_BYTES) {
+        if (info.url !== card.url || info.contentType !== PHOTO_CONTENT_TYPE || info.size <= 0 || info.size > MAX_PHOTO_BYTES) {
           return { index, field: 'photo', message: 'This photo could not be used. Remove it and add it again.' }
         }
         return null

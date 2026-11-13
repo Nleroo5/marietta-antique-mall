@@ -1,3 +1,4 @@
+import { ipAddress } from '@vercel/functions'
 import { NextResponse, type NextRequest } from 'next/server'
 
 /** Headers for every vendor and admin response (SPEC section 9). */
@@ -16,26 +17,28 @@ export function json(body: unknown, status = 200): NextResponse {
   return withPrivateHeaders(NextResponse.json(body, { status }))
 }
 
-/** Best-effort client IP. Vercel sets x-forwarded-for; the first entry is the client. */
+/** The client's IP. On Vercel the platform sets this header and clients can't spoof it. */
 export function clientIp(req: Request): string {
-  return req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || req.headers.get('x-real-ip') || 'unknown'
+  return ipAddress(req) || req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
 }
 
 /**
  * Write requests must come from this site. The cookie is SameSite=Lax, which already
- * stops cross-site POSTs from carrying it; this is a second check.
+ * stops cross-site POSTs from carrying it; this is a second check. Compares with the
+ * Host header so it also works when testing from a phone on the local network.
  */
-export function isSameOrigin(req: NextRequest): boolean {
+export function isSameOrigin(req: Request): boolean {
   const origin = req.headers.get('origin')
-  if (!origin) return false
+  const host = req.headers.get('host')
+  if (!origin || !host) return false
   try {
-    return new URL(origin).host === req.nextUrl.host
+    return new URL(origin).host === host
   } catch {
     return false
   }
 }
 
-/** Secure cookies everywhere except plain-http localhost during development. */
+/** Secure cookies everywhere except plain-http local development. */
 export function cookieIsSecure(req: NextRequest): boolean {
-  return req.nextUrl.protocol === 'https:'
+  return process.env.NODE_ENV !== 'development' || req.nextUrl.protocol === 'https:'
 }

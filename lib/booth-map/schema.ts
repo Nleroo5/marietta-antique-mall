@@ -178,6 +178,8 @@ export const items = pgTable(
     index('items_status_live_idx').on(t.status, t.liveAt.desc()),
     index('items_booth_status_idx').on(t.boothId, t.status),
     index('items_vendor_status_idx').on(t.vendorId, t.status),
+    // A photo belongs to one item. Backs up the double-post check in createItems.
+    uniqueIndex('items_photo_url_idx').on(t.photoUrl),
     check('items_title', sql`btrim(${t.title}) <> '' and char_length(${t.title}) <= 80`),
     check('items_price_xor_ask', sql`(${t.priceCents} is not null) <> ${t.askInStore}`),
     check('items_price_range', sql`${t.priceCents} is null or ${t.priceCents} between 0 and ${sql.raw(String(MAX_PRICE_CENTS))}`),

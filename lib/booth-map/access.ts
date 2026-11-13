@@ -58,7 +58,8 @@ export async function resolveSession(db: AnyDb, cookieValue: string | undefined 
 }
 
 export type LinkResult =
-  | { ok: true; vendorId: string; newCookie: string | null }
+  /** `cookie` is the value to (re)set: new for a new device, or the existing one so its year restarts. */
+  | { ok: true; vendorId: string; cookie: string; created: boolean }
   | { ok: false; reason: 'malformed' | 'unknown' | 'inactive' }
 
 /**
@@ -80,7 +81,9 @@ export async function openVendorLink(db: AnyDb, token: string, existingCookie?: 
     if (vendor.status !== 'active') return { ok: false as const, reason: 'inactive' as const }
 
     const current = await resolveSession(tx as unknown as AnyDb, existingCookie)
-    if (current && current.vendorId === vendor.id) return { ok: true as const, vendorId: vendor.id, newCookie: null }
+    if (current && current.vendorId === vendor.id && existingCookie) {
+      return { ok: true as const, vendorId: vendor.id, cookie: existingCookie, created: false }
+    }
 
     const cookie = generateToken()
     const [device] = await tx
@@ -88,7 +91,7 @@ export async function openVendorLink(db: AnyDb, token: string, existingCookie?: 
       .values({ vendorId: vendor.id, deviceCookieHash: hashToken(cookie), linkVersion: vendor.linkVersion })
       .returning({ id: schema.vendorDevices.id })
     await tx.insert(schema.activityLog).values({ actor: 'vendor', vendorId: vendor.id, deviceId: device.id, action: 'device_added' })
-    return { ok: true as const, vendorId: vendor.id, newCookie: cookie }
+    return { ok: true as const, vendorId: vendor.id, cookie, created: true }
   })
 }
 

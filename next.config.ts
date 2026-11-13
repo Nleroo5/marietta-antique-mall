@@ -1,5 +1,7 @@
 import type { NextConfig } from 'next'
 
+const blobStoreId = process.env.BLOB_READ_WRITE_TOKEN?.split('_')[3]
+
 const nextConfig: NextConfig = {
   images: {
     formats: ['image/webp', 'image/avif'],
@@ -15,11 +17,11 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'scontent.xx.fbcdn.net',
       },
-      {
-        // Booth map vendor photos (Vercel Blob public store)
-        protocol: 'https',
-        hostname: '*.public.blob.vercel-storage.com',
-      },
+      // Booth map vendor photos: only this site's own Vercel Blob store, never any
+      // other store (the host comes from the store id in BLOB_READ_WRITE_TOKEN).
+      ...(blobStoreId
+        ? [{ protocol: 'https' as const, hostname: `${blobStoreId.toLowerCase()}.public.blob.vercel-storage.com` }]
+        : []),
     ],
   },
   // Enable React strict mode

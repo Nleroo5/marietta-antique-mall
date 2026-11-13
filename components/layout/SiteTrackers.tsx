@@ -13,8 +13,11 @@ import { isBoothMapPrivatePath } from '@/lib/booth-map/paths'
  * start of <body> instead of in <head>; it still runs during the first parse and
  * fires the same single PageView.
  *
- * It is a client component with a path check as a second guard: the root 404 screen
- * uses SiteShell, and a 404 under a vendor URL must still load no trackers.
+ * The real protection is structural: vendor and admin pages live in app/(booth),
+ * and catch-all routes there send every unknown /v, /vendor and /admin address to
+ * the booth 404 (tests/booth-map/structure.test.ts checks this). The path check
+ * below only covers client-side rendering; it can't stop the inline Pixel snippet
+ * in the statically built public 404 page, which runs before React starts.
  */
 export default function SiteTrackers() {
   const pathname = usePathname() ?? ''

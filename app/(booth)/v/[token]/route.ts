@@ -7,14 +7,22 @@ import { clientIp, cookieIsSecure, withPrivateHeaders } from '@/lib/booth-map/ht
 /**
  * A vendor's private link (printed as a QR code). Swaps the token for a cookie and
  * redirects to /vendor, so the token never stays in the address bar (SPEC 9).
- * Wrong links are counted per IP in the database; 10 in 15 minutes blocks that
- * address for an hour.
+ *
+ * Rate limits, per IP, stored in the database:
+ * - Wrong links: 10 in 15 minutes blocks wrong links from that IP for an hour. A
+ *   valid card still works from a blocked IP, so one person scanning old cards on
+ *   the mall wifi can't lock every vendor out.
+ * - New phones signed in: 30 an hour, so one card can't create devices without end.
+ *
+ * Note: the token is part of the request path, so it appears in Vercel's request
+ * logs and the browser's history entry for the redirect.
  */
 export const dynamic = 'force-dynamic'
 
 const BAD_LINKS_WINDOW = 15 * 60
 const BAD_LINKS_LIMIT = 10
 const BLOCK_SECONDS = 60 * 60
+const NEW_DEVICES_PER_HOUR = 30
 
 function problemPage(status: 404 | 429): NextResponse {
   const line =
@@ -28,29 +36,38 @@ function problemPage(status: 404 | 429): NextResponse {
 export async function GET(req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
   const { token } = await ctx.params
   const db = getDb()
-  const ipKey = counterKey('vendor-link-ip', clientIp(req))
-
-  if (await isBlocked(db, ipKey)) return problemPage(429)
+  const ip = clientIp(req)
+  const badKey = counterKey('vendor-link-bad-ip', ip)
 
   const result = await openVendorLink(db, token, req.cookies.get(VENDOR_COOKIE)?.value)
+
   if (!result.ok) {
+    if (await isBlocked(db, badKey)) return problemPage(429)
     // A paused or removed vendor's real link is not a guessing attempt.
     if (result.reason !== 'inactive') {
-      const hit = await recordHit(db, ipKey, { windowSeconds: BAD_LINKS_WINDOW, blockAt: BAD_LINKS_LIMIT, blockSeconds: BLOCK_SECONDS })
+      const hit = await recordHit(db, badKey, { windowSeconds: BAD_LINKS_WINDOW, blockAt: BAD_LINKS_LIMIT, blockSeconds: BLOCK_SECONDS })
       if (hit.blocked) return problemPage(429)
     }
     return problemPage(404)
   }
 
-  const res = NextResponse.redirect(new URL('/vendor', req.url), 303)
-  if (result.newCookie) {
-    res.cookies.set(VENDOR_COOKIE, result.newCookie, {
-      httpOnly: true,
-      secure: cookieIsSecure(req),
-      sameSite: 'lax',
-      path: '/',
-      maxAge: VENDOR_COOKIE_MAX_AGE,
-    })
+  if (result.created) {
+    const { count } = await recordHit(db, counterKey('vendor-link-new-device-ip', ip), { windowSeconds: 3600 })
+    if (count > NEW_DEVICES_PER_HOUR) return problemPage(429)
   }
+
+  const res = NextResponse.redirect(new URL('/vendor', req.url), 303)
+  res.cookies.set(VENDOR_COOKIE, result.cookie, {
+    httpOnly: true,
+    secure: cookieIsSecure(req),
+    sameSite: 'lax',
+    path: '/',
+    maxAge: VENDOR_COOKIE_MAX_AGE,
+  })
   return withPrivateHeaders(res)
+}
+
+/** HEAD requests (link checkers, previews) must not sign in a device. */
+export function HEAD() {
+  return withPrivateHeaders(new NextResponse(null, { status: 200 }))
 }

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { upload } from '@vercel/blob/client'
-import { preparePhoto } from '@/lib/booth-map/photo-client'
+import { preparePhoto, uuid } from '@/lib/booth-map/photo-client'
 import { parsePriceInput } from '@/lib/booth-map/pricing'
 import { MAX_ITEMS_PER_POST } from '@/lib/booth-map/blob'
 
@@ -17,7 +17,8 @@ type Screen = 'home' | 'add' | 'done'
 
 interface Draft {
   key: string
-  state: 'preparing' | 'uploading' | 'uploaded' | 'failed'
+  /** 'missing': restored after a reload before its photo finished uploading. */
+  state: 'preparing' | 'uploading' | 'uploaded' | 'failed' | 'missing'
   progress: number
   preview: string
   blobUrl?: string
@@ -40,13 +41,22 @@ interface Props {
   needsConsent: boolean
 }
 
+const EXPIRED = 'Your vendor link has expired. Scan your card again. Your text is saved on this phone.'
 const storageKey = (vendorId: string) => `mam-booth-map-drafts:${vendorId}`
 
+/** Saves every card's text, and the photo too once it has uploaded. */
 function saveDrafts(vendorId: string, drafts: Draft[]) {
   try {
-    const keep = drafts
-      .filter((d) => d.state === 'uploaded' && d.blobUrl)
-      .map(({ key, blobUrl, width, height, title, price, askInStore, booth }) => ({ key, blobUrl, width, height, title, price, askInStore, booth }))
+    const keep = drafts.map(({ key, blobUrl, width, height, title, price, askInStore, booth, state }) => ({
+      key,
+      blobUrl: state === 'uploaded' ? blobUrl : undefined,
+      width,
+      height,
+      title,
+      price,
+      askInStore,
+      booth,
+    }))
     if (keep.length) localStorage.setItem(storageKey(vendorId), JSON.stringify(keep))
     else localStorage.removeItem(storageKey(vendorId))
   } catch {
@@ -54,29 +64,41 @@ function saveDrafts(vendorId: string, drafts: Draft[]) {
   }
 }
 
-function loadDrafts(vendorId: string): Draft[] {
+function loadDrafts(vendorId: string, booths: string[]): Draft[] {
   try {
     const raw = localStorage.getItem(storageKey(vendorId))
     if (!raw) return []
     const list = JSON.parse(raw) as Array<Partial<Draft>>
+    if (!Array.isArray(list)) return []
     return list
-      .filter((d) => typeof d.blobUrl === 'string' && typeof d.key === 'string')
-      .map((d) => ({
-        key: d.key!,
-        state: 'uploaded' as const,
-        progress: 100,
-        preview: d.blobUrl!,
-        blobUrl: d.blobUrl,
-        width: d.width,
-        height: d.height,
-        title: d.title ?? '',
-        price: d.price ?? '',
-        askInStore: d.askInStore === true,
-        booth: d.booth ?? '',
-      }))
+      .filter((d) => typeof d.key === 'string')
+      .slice(0, MAX_ITEMS_PER_POST)
+      .map((d) => {
+        const uploaded = typeof d.blobUrl === 'string'
+        // A booth that is no longer this vendor's is cleared, so the picker shows.
+        const booth = booths.length === 1 ? booths[0] : booths.includes(d.booth ?? '') ? d.booth! : ''
+        return {
+          key: d.key!,
+          state: uploaded ? ('uploaded' as const) : ('missing' as const),
+          progress: uploaded ? 100 : 0,
+          preview: uploaded ? d.blobUrl! : '',
+          blobUrl: uploaded ? d.blobUrl : undefined,
+          width: d.width,
+          height: d.height,
+          title: typeof d.title === 'string' ? d.title : '',
+          price: typeof d.price === 'string' ? d.price : '',
+          askInStore: d.askInStore === true,
+          booth,
+          error: uploaded ? undefined : 'Add this photo again. Your text is still here.',
+        }
+      })
   } catch {
     return []
   }
+}
+
+function revokePreview(d: Pick<Draft, 'preview'>) {
+  if (d.preview.startsWith('blob:')) URL.revokeObjectURL(d.preview)
 }
 
 function boothLabel(booths: string[]) {
@@ -96,35 +118,50 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
   const [live, setLive] = useState(liveCount)
   const [dragging, setDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const replaceTarget = useRef<string | null>(null)
   const queue = useRef<Promise<void>>(Promise.resolve())
+  const postingRef = useRef(false)
+  const dragDepth = useRef(0)
   const restored = useRef(false)
+  const draftsRef = useRef<Draft[]>([])
+  draftsRef.current = drafts
 
-  // Restore uploaded drafts after a reload or dropped connection.
+  // Restore saved cards after a reload or dropped connection.
   useEffect(() => {
     if (restored.current) return
     restored.current = true
-    const saved = loadDrafts(vendorId)
+    const saved = loadDrafts(vendorId, booths)
     if (saved.length) {
       setDrafts(saved)
       setScreen('add')
     }
-  }, [vendorId])
+  }, [vendorId, booths])
 
   useEffect(() => {
     if (restored.current) saveDrafts(vendorId, drafts)
   }, [vendorId, drafts])
 
+  // Release preview images when the page goes away.
+  useEffect(() => () => draftsRef.current.forEach(revokePreview), [])
+
   const patch = useCallback((key: string, change: Partial<Draft>) => {
-    setDrafts((list) => list.map((d) => (d.key === key ? { ...d, ...change } : d)))
+    setDrafts((list) =>
+      list.map((d) => {
+        if (d.key !== key) return d
+        if (change.preview !== undefined && change.preview !== d.preview) revokePreview(d)
+        return { ...d, ...change }
+      })
+    )
   }, [])
 
   const uploadOne = useCallback(
     async (key: string, file: File) => {
+      if (!draftsRef.current.some((d) => d.key === key)) return // removed while waiting in the queue
       try {
         patch(key, { state: 'preparing', progress: 0, error: undefined })
         const photo = await preparePhoto(file)
         patch(key, { state: 'uploading', preview: URL.createObjectURL(photo.blob), width: photo.width, height: photo.height })
-        const result = await upload(`booth-map/${vendorId}/${crypto.randomUUID()}.jpg`, photo.blob, {
+        const result = await upload(`booth-map/${vendorId}/${uuid()}.jpg`, photo.blob, {
           access: 'public',
           handleUploadUrl: '/api/booth-map/upload',
           contentType: 'image/jpeg',
@@ -138,21 +175,42 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
           body: JSON.stringify({ url: result.url }),
         }).catch(() => {})
       } catch (err) {
-        const message = err instanceof Error && /read|process/.test(err.message) ? err.message : 'Upload failed. Check the connection and tap Retry.'
+        let message = err instanceof Error && /read|process/.test(err.message) ? err.message : 'Upload failed. Check the connection and tap Retry.'
+        // Tell a reset link apart from a network problem.
+        const check = await fetch('/api/booth-map/session', { cache: 'no-store' }).catch(() => null)
+        if (check?.status === 401) {
+          message = EXPIRED
+          setPostError(EXPIRED)
+        }
         patch(key, { state: 'failed', error: message, file })
       }
     },
     [patch, vendorId]
   )
 
+  const enqueue = useCallback((key: string, file: File) => {
+    queue.current = queue.current.then(() => uploadOne(key, file))
+  }, [uploadOne])
+
   const addFiles = useCallback(
     (files: FileList | File[]) => {
       setPostError(null)
-      const room = MAX_ITEMS_PER_POST - drafts.length
-      const picked = Array.from(files).slice(0, Math.max(0, room))
-      if (files.length > picked.length) setPostError(`You can post up to ${MAX_ITEMS_PER_POST} photos at a time.`)
+      const list = Array.from(files)
+
+      // Re-picking the photo for one card that lost it.
+      const target = replaceTarget.current
+      replaceTarget.current = null
+      if (target && list[0]) {
+        patch(target, { state: 'preparing', error: undefined, file: list[0] })
+        enqueue(target, list[0])
+        return
+      }
+
+      const room = MAX_ITEMS_PER_POST - draftsRef.current.length
+      const picked = list.slice(0, Math.max(0, room))
+      if (list.length > picked.length) setPostError(`You can post up to ${MAX_ITEMS_PER_POST} photos at a time.`)
       const fresh: Draft[] = picked.map((file) => ({
-        key: crypto.randomUUID(),
+        key: uuid(),
         state: 'preparing',
         progress: 0,
         preview: '',
@@ -162,19 +220,30 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
         booth: booths.length === 1 ? booths[0] : '',
         file,
       }))
-      setDrafts((list) => [...list, ...fresh])
+      draftsRef.current = [...draftsRef.current, ...fresh] // so a second quick pick sees the true count
+      setDrafts((l) => [...l, ...fresh])
       // One photo at a time keeps memory low on older phones.
-      for (const d of fresh) queue.current = queue.current.then(() => uploadOne(d.key, d.file!))
+      for (const d of fresh) enqueue(d.key, d.file!)
     },
-    [booths, drafts.length, uploadOne]
+    [booths, enqueue, patch]
   )
 
   const retry = (d: Draft) => {
-    if (d.file) queue.current = queue.current.then(() => uploadOne(d.key, d.file!))
+    if (!d.file) return
+    patch(d.key, { state: 'preparing', error: undefined }) // hides Retry so it can't be queued twice
+    enqueue(d.key, d.file)
+  }
+
+  const pickFor = (key: string) => {
+    replaceTarget.current = key
+    fileInput.current?.click()
   }
 
   const remove = (key: string) => {
-    setDrafts((list) => list.filter((d) => d.key !== key))
+    setDrafts((list) => {
+      list.filter((d) => d.key === key).forEach(revokePreview)
+      return list.filter((d) => d.key !== key)
+    })
     setCardErrors((e) => {
       const next = { ...e }
       delete next[key]
@@ -185,7 +254,7 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
   const problems = useMemo(
     () =>
       drafts.map((d) => {
-        if (d.state !== 'uploaded') return d.state === 'failed' ? 'failed' : 'uploading'
+        if (d.state !== 'uploaded') return d.state === 'failed' || d.state === 'missing' ? 'failed' : 'uploading'
         if (!d.title.trim()) return 'title'
         if (!d.askInStore && !parsePriceInput(d.price).ok) return 'price'
         if (!d.booth) return 'booth'
@@ -198,22 +267,38 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
   let postLabel = `Post ${drafts.length} ${drafts.length === 1 ? 'item' : 'items'}`
   if (posting) postLabel = 'Posting…'
   else if (problems.includes('uploading')) postLabel = 'Uploading photos…'
-  else if (problems.includes('failed')) postLabel = 'Retry or remove the failed photo'
-  else if (problems.some((p) => p === 'title' || p === 'price' || p === 'booth')) postLabel = 'Add a title and price to each photo'
+  else if (problems.includes('failed')) postLabel = 'Fix or remove the photo marked in red'
+  else if (problems.includes('booth')) postLabel = 'Pick a booth for each photo'
+  else if (problems.some((p) => p === 'title' || p === 'price')) postLabel = 'Add a title and price to each photo'
   else if (consentNeeded && !consent) postLabel = 'Tick the box above to post'
 
+  function finishPosted(sent: Set<string>, count: number) {
+    setDrafts((list) => {
+      list.filter((d) => sent.has(d.key)).forEach(revokePreview)
+      return list.filter((d) => !sent.has(d.key))
+    })
+    setPosted(count)
+    setLive((n) => n + count)
+    setConsentNeeded(false)
+    setScreen('done')
+    window.scrollTo(0, 0)
+  }
+
   async function post() {
-    if (!ready || posting) return
+    if (!ready || postingRef.current) return
+    postingRef.current = true
     setPosting(true)
     setPostError(null)
     setCardErrors({})
+    const sentDrafts = drafts
+    const sent = new Set(sentDrafts.map((d) => d.key))
     try {
       const res = await fetch('/api/booth-map/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           consent,
-          items: drafts.map((d) => ({
+          items: sentDrafts.map((d) => ({
             url: d.blobUrl,
             width: d.width,
             height: d.height,
@@ -225,33 +310,34 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
         }),
       })
       const data = await res.json().catch(() => ({}))
-      if (res.ok) {
-        setPosted(drafts.length)
-        setLive((n) => n + drafts.length)
-        setDrafts([])
-        setConsentNeeded(false)
-        setScreen('done')
-        window.scrollTo(0, 0)
-        return
+      if (res.ok) return finishPosted(sent, sentDrafts.length)
+
+      if (res.status === 401) return setPostError(EXPIRED)
+      if (data.code === 'CONSENT_REQUIRED') {
+        setConsentNeeded(true)
+        setConsent(false)
+        return setPostError(data.error)
       }
       if (data.code === 'ALREADY_POSTED' && Array.isArray(data.indexes)) {
-        const doneKeys = new Set((data.indexes as number[]).map((i) => drafts[i]?.key))
-        setDrafts((list) => list.filter((d) => !doneKeys.has(d.key)))
-        setPostError('Some of these were already posted, so they were taken off this list. Tap Post again for the rest.')
-        return
+        // An earlier tap went through but its reply was lost.
+        const done = new Set((data.indexes as number[]).map((i) => sentDrafts[i]?.key).filter(Boolean) as string[])
+        if (done.size === sentDrafts.length) return finishPosted(done, done.size)
+        setDrafts((list) => list.filter((d) => !done.has(d.key)))
+        return setPostError(`${done.size} of these ${done.size === 1 ? 'was' : 'were'} already posted. Tap Post again for the rest.`)
       }
       if (Array.isArray(data.errors)) {
         const map: Record<string, string> = {}
         for (const e of data.errors as Array<{ index: number; message: string }>) {
-          const key = drafts[e.index]?.key
+          const key = sentDrafts[e.index]?.key
           if (key && !map[key]) map[key] = e.message
         }
         setCardErrors(map)
       }
-      setPostError(res.status === 401 ? data.error : data.error || 'Posting failed. Check the connection and try again.')
+      setPostError(data.error || 'Posting failed. Check the connection and try again.')
     } catch {
       setPostError('No connection. Your photos and text are saved here. Try again when you have signal.')
     } finally {
+      postingRef.current = false
       setPosting(false)
     }
   }
@@ -264,7 +350,7 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
           <p className="font-display text-2xl text-black">{boothLabel(booths)}</p>
         </div>
         {screen !== 'home' && (
-          <button type="button" onClick={() => setScreen('home')} className="min-h-[44px] px-1 font-semibold text-black">
+          <button type="button" onClick={() => setScreen('home')} disabled={posting} className="min-h-[44px] px-1 font-semibold text-black">
             ‹ Back
           </button>
         )}
@@ -283,11 +369,16 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
             </svg>
           </div>
           <h1 className="font-display text-2xl">
-            {posted} {posted === 1 ? 'item is' : 'items are'} live
+            {posted} {posted === 1 ? 'item' : 'items'} posted
           </h1>
-          <p className="text-base">Shoppers can see {posted === 1 ? 'it' : 'them'} now, tagged to your booth.</p>
+          <p className="text-base">{posted === 1 ? "It's" : "They're"} saved and tagged to your booth.</p>
+          {drafts.length > 0 && (
+            <p className="text-sm text-charcoal-light">
+              {drafts.length} more {drafts.length === 1 ? 'photo is' : 'photos are'} still waiting on the Add items screen.
+            </p>
+          )}
           <button type="button" onClick={() => setScreen('add')} className="min-h-[52px] rounded-lg border-2 border-mauve bg-mauve text-lg font-semibold text-black">
-            Add more
+            {drafts.length ? 'Back to my photos' : 'Add more'}
           </button>
           <button type="button" onClick={() => setScreen('home')} className="min-h-[52px] rounded-lg border-2 border-mauve text-lg font-semibold text-black">
             Done
@@ -302,13 +393,19 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
       <>
         {header}
         <main className="mx-auto flex max-w-md flex-col gap-3 px-4 pb-10 pt-5">
-          <button
-            type="button"
-            onClick={() => setScreen('add')}
-            className="min-h-[76px] w-full rounded-xl bg-mauve text-xl font-bold text-black active:bg-mauve-dark"
-          >
-            + Add new items
-          </button>
+          {booths.length === 0 ? (
+            <p className="rounded-xl border border-champagne-dark bg-white p-4 text-base">
+              No booth is linked to your page yet. Ask at the front desk to set it up.
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setScreen('add')}
+              className="min-h-[76px] w-full rounded-xl bg-mauve text-xl font-bold text-black active:bg-mauve-dark"
+            >
+              + Add new items
+            </button>
+          )}
           <div className="flex min-h-[60px] items-center justify-between rounded-xl border border-champagne-dark bg-white px-4 text-lg font-semibold">
             <span>My items</span>
             <span className="text-base font-medium">{live} live</span>
@@ -326,15 +423,21 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
       {header}
       <main
         className="mx-auto flex max-w-md flex-col gap-3 px-4 pb-6 pt-5"
-        onDragOver={(e) => {
+        onDragEnter={(e) => {
           e.preventDefault()
+          dragDepth.current += 1
           setDragging(true)
         }}
-        onDragLeave={() => setDragging(false)}
+        onDragOver={(e) => e.preventDefault()}
+        onDragLeave={() => {
+          dragDepth.current = Math.max(0, dragDepth.current - 1)
+          if (dragDepth.current === 0) setDragging(false)
+        }}
         onDrop={(e) => {
           e.preventDefault()
+          dragDepth.current = 0
           setDragging(false)
-          if (e.dataTransfer.files.length) addFiles(e.dataTransfer.files)
+          if (!posting && e.dataTransfer.files.length) addFiles(e.dataTransfer.files)
         }}
       >
         <h1 className="font-display text-2xl">Add new items</h1>
@@ -352,119 +455,138 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
             e.target.value = ''
           }}
         />
-        <button
-          type="button"
-          onClick={() => fileInput.current?.click()}
-          disabled={drafts.length >= MAX_ITEMS_PER_POST}
-          className={`min-h-[56px] rounded-lg border-2 border-dashed text-lg font-semibold text-black disabled:opacity-50 ${
-            dragging ? 'border-charcoal bg-mint-light' : 'border-mauve bg-white'
-          }`}
-        >
-          {drafts.length ? 'Add more photos' : 'Take or choose photos'}
-          <span className="hidden text-sm font-normal md:block">or drop photos here</span>
-        </button>
 
-        {drafts.map((d, i) => {
-          const err = cardErrors[d.key]
-          const priceInvalid = !d.askInStore && d.price.trim() !== '' && !parsePriceInput(d.price).ok
-          return (
-            <div key={d.key} className={`flex gap-3 rounded-xl border bg-white p-3 ${err ? 'border-red-700' : 'border-champagne-dark'}`}>
+        {/* Locked while posting, so nothing typed or added after tapping Post is lost. */}
+        <fieldset disabled={posting} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
+          <button
+            type="button"
+            onClick={() => {
+              replaceTarget.current = null
+              fileInput.current?.click()
+            }}
+            disabled={drafts.length >= MAX_ITEMS_PER_POST}
+            className={`min-h-[56px] rounded-lg border-2 border-dashed text-lg font-semibold text-black disabled:opacity-50 ${
+              dragging ? 'border-charcoal bg-mint-light' : 'border-mauve bg-white'
+            }`}
+          >
+            {drafts.length ? 'Add more photos' : 'Take or choose photos'}
+            <span className="hidden text-sm font-normal md:block">or drop photos here</span>
+          </button>
+
+          {drafts.map((d, i) => {
+            const err = cardErrors[d.key]
+            const parsed = parsePriceInput(d.price)
+            const priceInvalid = !d.askInStore && d.price.trim() !== '' && !parsed.ok
+            const busy = d.state === 'preparing' || d.state === 'uploading'
+            return (
               <div
-                className="relative h-24 w-24 flex-none overflow-hidden rounded-lg bg-champagne bg-cover bg-center"
-                style={d.preview ? { backgroundImage: `url(${d.preview})` } : undefined}
+                key={d.key}
+                className={`flex gap-3 rounded-xl border bg-white p-3 ${err || d.state === 'failed' || d.state === 'missing' ? 'border-red-700' : 'border-champagne-dark'}`}
               >
-                {d.state !== 'uploaded' && (
-                  <span className="absolute inset-0 flex items-center justify-center bg-white/60 text-xs font-bold">
-                    {d.state === 'failed' ? 'Failed' : d.state === 'preparing' ? 'Preparing' : `${d.progress}%`}
-                  </span>
-                )}
-              </div>
-              <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                <label htmlFor={`title-${d.key}`} className="text-xs font-semibold text-charcoal-light">
-                  Title (what the tag says)
-                </label>
-                <input
-                  id={`title-${d.key}`}
-                  type="text"
-                  value={d.title}
-                  maxLength={80}
-                  autoComplete="off"
-                  placeholder="e.g. Brass floor lamp"
-                  onChange={(e) => patch(d.key, { title: e.target.value })}
-                  className="min-h-[46px] w-full rounded-lg border border-champagne-dark px-3 text-base focus:outline focus:outline-2 focus:outline-charcoal"
-                />
-
-                <label htmlFor={`price-${d.key}`} className="text-xs font-semibold text-charcoal-light">
-                  Price
-                </label>
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="relative w-28">
-                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-charcoal-light">$</span>
-                    <input
-                      id={`price-${d.key}`}
-                      type="text"
-                      inputMode="decimal"
-                      value={d.price}
-                      disabled={d.askInStore}
-                      placeholder="0"
-                      aria-invalid={priceInvalid}
-                      aria-describedby={priceInvalid ? `price-err-${d.key}` : undefined}
-                      onChange={(e) => patch(d.key, { price: e.target.value })}
-                      className="min-h-[46px] w-full rounded-lg border border-champagne-dark pl-6 pr-2 text-base disabled:bg-champagne focus:outline focus:outline-2 focus:outline-charcoal"
-                    />
-                  </div>
-                  <label className="inline-flex min-h-[44px] items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={d.askInStore}
-                      onChange={(e) => patch(d.key, { askInStore: e.target.checked, price: e.target.checked ? '' : d.price })}
-                      className="h-5 w-5 accent-charcoal"
-                    />
-                    No price, ask in store
-                  </label>
-                </div>
-                {priceInvalid && (
-                  <p id={`price-err-${d.key}`} className="text-sm text-red-700">
-                    {(parsePriceInput(d.price) as { ok: false; error: string }).error}
-                  </p>
-                )}
-
-                {booths.length > 1 && (
-                  <>
-                    <label htmlFor={`booth-${d.key}`} className="text-xs font-semibold text-charcoal-light">
-                      Booth
-                    </label>
-                    <select
-                      id={`booth-${d.key}`}
-                      value={d.booth}
-                      onChange={(e) => patch(d.key, { booth: e.target.value })}
-                      className="min-h-[46px] rounded-lg border border-champagne-dark bg-white px-3 text-base"
-                    >
-                      <option value="">Pick a booth</option>
-                      {booths.map((b) => (
-                        <option key={b} value={b}>
-                          Booth {b}
-                        </option>
-                      ))}
-                    </select>
-                  </>
-                )}
-
-                {(d.error || err) && <p className="text-sm text-red-700">{err || d.error}</p>}
-                <div className="flex gap-4">
-                  {d.state === 'failed' && d.file && (
-                    <button type="button" onClick={() => retry(d)} className="min-h-[36px] text-sm font-semibold underline">
-                      Retry
-                    </button>
+                <div
+                  className="relative h-24 w-24 flex-none overflow-hidden rounded-lg bg-champagne bg-cover bg-center"
+                  style={d.preview ? { backgroundImage: `url(${d.preview})` } : undefined}
+                >
+                  {d.state !== 'uploaded' && (
+                    <span className="absolute inset-0 flex items-center justify-center bg-white/60 p-1 text-center text-xs font-bold">
+                      {d.state === 'failed' ? 'Failed' : d.state === 'missing' ? 'No photo' : d.state === 'preparing' ? 'Preparing' : `${d.progress}%`}
+                    </span>
                   )}
-                  <button type="button" onClick={() => remove(d.key)} className="min-h-[36px] text-sm text-charcoal-light underline">
-                    Remove photo {i + 1}
-                  </button>
+                </div>
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                  <label htmlFor={`title-${d.key}`} className="text-xs font-semibold text-charcoal-light">
+                    Title (what the tag says)
+                  </label>
+                  <input
+                    id={`title-${d.key}`}
+                    type="text"
+                    value={d.title}
+                    maxLength={80}
+                    autoComplete="off"
+                    placeholder="e.g. Brass floor lamp"
+                    onChange={(e) => patch(d.key, { title: e.target.value })}
+                    className="min-h-[46px] w-full rounded-lg border border-champagne-dark px-3 text-base focus:outline focus:outline-2 focus:outline-charcoal"
+                  />
+
+                  <label htmlFor={`price-${d.key}`} className="text-xs font-semibold text-charcoal-light">
+                    Price
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="relative w-28">
+                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-charcoal-light">$</span>
+                      <input
+                        id={`price-${d.key}`}
+                        type="text"
+                        inputMode="decimal"
+                        value={d.price}
+                        disabled={d.askInStore}
+                        placeholder="0"
+                        aria-invalid={priceInvalid}
+                        aria-describedby={priceInvalid ? `price-err-${d.key}` : undefined}
+                        onChange={(e) => patch(d.key, { price: e.target.value })}
+                        className="min-h-[46px] w-full rounded-lg border border-champagne-dark pl-6 pr-2 text-base disabled:bg-champagne focus:outline focus:outline-2 focus:outline-charcoal"
+                      />
+                    </div>
+                    <label className="inline-flex min-h-[44px] items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={d.askInStore}
+                        onChange={(e) => patch(d.key, { askInStore: e.target.checked, price: e.target.checked ? '' : d.price })}
+                        className="h-5 w-5 accent-charcoal"
+                      />
+                      No price, ask in store
+                    </label>
+                  </div>
+                  {priceInvalid && !parsed.ok && (
+                    <p id={`price-err-${d.key}`} className="text-sm text-red-700">
+                      {parsed.error}
+                    </p>
+                  )}
+
+                  {booths.length > 1 && (
+                    <>
+                      <label htmlFor={`booth-${d.key}`} className="text-xs font-semibold text-charcoal-light">
+                        Booth
+                      </label>
+                      <select
+                        id={`booth-${d.key}`}
+                        value={d.booth}
+                        onChange={(e) => patch(d.key, { booth: e.target.value })}
+                        className="min-h-[46px] rounded-lg border border-champagne-dark bg-white px-3 text-base"
+                      >
+                        <option value="">Pick a booth</option>
+                        {booths.map((b) => (
+                          <option key={b} value={b}>
+                            Booth {b}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  )}
+
+                  {(d.error || err) && <p className="text-sm text-red-700">{err || d.error}</p>}
+                  <div className="flex flex-wrap gap-x-4">
+                    {d.state === 'failed' && d.file && (
+                      <button type="button" onClick={() => retry(d)} className="min-h-[36px] text-sm font-semibold underline">
+                        Retry
+                      </button>
+                    )}
+                    {(d.state === 'missing' || (d.state === 'failed' && !d.file)) && (
+                      <button type="button" onClick={() => pickFor(d.key)} className="min-h-[36px] text-sm font-semibold underline">
+                        Choose photo
+                      </button>
+                    )}
+                    {!busy && (
+                      <button type="button" onClick={() => remove(d.key)} className="min-h-[36px] text-sm text-charcoal-light underline">
+                        Remove photo {i + 1}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          )
-        })}
+            )
+          })}
+        </fieldset>
 
         {drafts.length === 0 && (
           <p className="text-sm text-charcoal-light">
@@ -473,11 +595,17 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
           </p>
         )}
 
-        {drafts.length > 0 && (
+        {(drafts.length > 0 || postError) && (
           <div className="sticky bottom-0 -mx-4 flex flex-col gap-2 bg-champagne px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-3">
-            {consentNeeded && (
+            {consentNeeded && drafts.length > 0 && (
               <label className="flex items-start gap-2 text-sm">
-                <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-5 w-5 flex-none accent-charcoal" />
+                <input
+                  type="checkbox"
+                  checked={consent}
+                  disabled={posting}
+                  onChange={(e) => setConsent(e.target.checked)}
+                  className="mt-0.5 h-5 w-5 flex-none accent-charcoal"
+                />
                 These are my items and my photos, and the mall may show them on its website and in its ads.
               </label>
             )}
@@ -486,14 +614,16 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
                 {postError}
               </p>
             )}
-            <button
-              type="button"
-              onClick={post}
-              disabled={!ready || posting}
-              className="min-h-[52px] w-full rounded-lg bg-mauve text-lg font-bold text-black disabled:bg-champagne-dark disabled:text-charcoal-light"
-            >
-              {postLabel}
-            </button>
+            {drafts.length > 0 && (
+              <button
+                type="button"
+                onClick={post}
+                disabled={!ready || posting}
+                className="min-h-[52px] w-full rounded-lg bg-mauve text-lg font-bold text-black disabled:bg-champagne-dark disabled:text-charcoal-light"
+              >
+                {postLabel}
+              </button>
+            )}
           </div>
         )}
       </main>
