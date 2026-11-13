@@ -8,7 +8,9 @@ export default defineConfig({
   dialect: 'postgresql',
   schema: './lib/booth-map/schema.ts',
   out: './drizzle/booth-map',
-  dbCredentials: { url: process.env.DATABASE_URL ?? '' },
+  // Migrations use Neon's direct connection, as Neon recommends for schema changes.
+  // The app itself uses the pooled DATABASE_URL.
+  dbCredentials: { url: process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL ?? '' },
   strict: true,
   verbose: true,
 })
