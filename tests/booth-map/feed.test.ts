@@ -101,9 +101,21 @@ describe('feed visibility', () => {
   })
 
   it('a booth page follows the same rules', async () => {
-    expect(titles(await getBoothFeed(any(), '114', { includeTest: false, now: NOW }))).toEqual(['live new', 'ask in store', 'live older', 'sold 10h ago'])
-    expect(await getBoothFeed(any(), '9001', { includeTest: false, now: NOW })).toEqual([])
-    expect(await getBoothFeed(any(), '200', { includeTest: true, now: NOW })).toEqual([])
+    expect(titles((await getBoothFeed(any(), '114', { includeTest: false, now: NOW }))!)).toEqual(['live new', 'ask in store', 'live older', 'sold 10h ago'])
+  })
+
+  it('a booth that does not exist, or whose vendor shoppers cannot see, is a 404 (null)', async () => {
+    expect(await getBoothFeed(any(), 'ZZZZ', { includeTest: true, now: NOW })).toBeNull()
+    expect(await getBoothFeed(any(), '9001', { includeTest: false, now: NOW })).toBeNull() // test vendor on the live site
+    expect(titles((await getBoothFeed(any(), '9001', { includeTest: true, now: NOW }))!)).toEqual(['test vendor item']) // on a preview
+    expect(await getBoothFeed(any(), '200', { includeTest: true, now: NOW })).toBeNull() // paused vendor
+    expect(await getBoothFeed(any(), '201', { includeTest: true, now: NOW })).toBeNull() // removed vendor
+  })
+
+  it('a real booth with nothing new is an empty list, not a 404', async () => {
+    const quiet = await vendor({ booth: '300' })
+    void quiet
+    expect(await getBoothFeed(any(), '300', { includeTest: false, now: NOW })).toEqual([])
   })
 
   it('an item page follows the same rules', async () => {
@@ -150,7 +162,24 @@ describe('display helpers', () => {
     expect(relativeLabel(new Date(now - 60 * 60_000).toISOString(), now)).toBe('1 hr ago')
     expect(relativeLabel(new Date(now - 5 * 3600_000).toISOString(), now)).toBe('5 hrs ago')
     expect(relativeLabel(new Date(now - 26 * 3600_000).toISOString(), now)).toBe('Yesterday')
+    // NOW is 10 AM Eastern. 20 hours ago was 2 PM yesterday; 36 hours ago was 10 PM two days ago.
+    expect(relativeLabel(new Date(now - 20 * 3600_000).toISOString(), now)).toBe('Yesterday')
+    expect(relativeLabel(new Date(now - 36 * 3600_000).toISOString(), now)).toBe('2 days ago')
+    expect(relativeLabel(new Date(now - 9 * 3600_000).toISOString(), now)).toBe('9 hrs ago') // 1 AM today
+    // Just after midnight, something from 11 PM reads as hours, not "Yesterday".
+    const twoAm = Date.parse('2026-11-14T07:00:00Z') // 2 AM Eastern
+    expect(relativeLabel(new Date(twoAm - 3 * 3600_000).toISOString(), twoAm)).toBe('3 hrs ago')
+
     expect(relativeLabel(new Date(now - 3 * 86_400_000).toISOString(), now)).toBe('3 days ago')
     expect(relativeLabel(new Date(now - 10 * 86_400_000).toISOString(), now)).toBe('Nov 4')
+  })
+})
+
+describe('cache keys', () => {
+  it('differ between previews (with test vendors) and the live site, so one can never serve the other', async () => {
+    const { cacheKeyParts } = await import('@/lib/booth-map/feed-cache')
+    for (const kind of ['feed', 'booth', 'item'] as const) {
+      expect(cacheKeyParts(kind, true)).not.toEqual(cacheKeyParts(kind, false))
+    }
   })
 })

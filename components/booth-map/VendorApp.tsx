@@ -115,6 +115,7 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
   const [postError, setPostError] = useState<string | null>(null)
   const [cardErrors, setCardErrors] = useState<Record<string, string>>({})
   const [posted, setPosted] = useState(0)
+  const [postedIds, setPostedIds] = useState<string[]>([])
   const [live, setLive] = useState(liveCount)
   const [dragging, setDragging] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -272,7 +273,8 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
   else if (problems.some((p) => p === 'title' || p === 'price')) postLabel = 'Add a title and price to each photo'
   else if (consentNeeded && !consent) postLabel = 'Tick the box above to post'
 
-  function finishPosted(sent: Set<string>, count: number) {
+  function finishPosted(sent: Set<string>, count: number, ids: string[] = []) {
+    setPostedIds(ids)
     setDrafts((list) => {
       list.filter((d) => sent.has(d.key)).forEach(revokePreview)
       return list.filter((d) => !sent.has(d.key))
@@ -310,7 +312,7 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
         }),
       })
       const data = await res.json().catch(() => ({}))
-      if (res.ok) return finishPosted(sent, sentDrafts.length)
+      if (res.ok) return finishPosted(sent, sentDrafts.length, Array.isArray(data.itemIds) ? data.itemIds : [])
 
       if (res.status === 401) return setPostError(EXPIRED)
       if (data.code === 'CONSENT_REQUIRED') {
@@ -379,11 +381,11 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
           )}
           {/* A full page load with no Referer, so the public page's trackers never see this private page. */}
           <a
-            href="/new-arrivals"
+            href={postedIds.length === 1 ? `/new-arrivals/item/${postedIds[0]}` : '/new-arrivals'}
             rel="noreferrer"
             className="inline-flex min-h-[52px] items-center justify-center rounded-lg border-2 border-mauve text-lg font-semibold text-black"
           >
-            See New Arrivals
+            {postedIds.length === 1 ? 'See it on New Arrivals' : 'See New Arrivals'}
           </a>
           <button type="button" onClick={() => setScreen('add')} className="min-h-[52px] rounded-lg border-2 border-mauve bg-mauve text-lg font-semibold text-black">
             {drafts.length ? 'Back to my photos' : 'Add more'}

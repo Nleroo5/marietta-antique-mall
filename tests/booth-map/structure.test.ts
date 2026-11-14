@@ -52,11 +52,18 @@ describe('New Arrivals stays hidden until launch (owner decision)', () => {
     expect(readFileSync('app/(site)/new-arrivals/layout.tsx', 'utf8')).toMatch(/index: false/)
   })
 
-  it('is not in the sitemap and not linked from the menu, header, footer or any existing page', () => {
+  it('no page under it overrides the noindex', () => {
+    for (const f of filesUnder('app/(site)/new-arrivals').filter((f) => !f.endsWith('layout.tsx'))) {
+      expect(readFileSync(f, 'utf8'), f).not.toMatch(/robots/)
+    }
+  })
+
+  it('is not in the sitemap or robots file and not linked from any existing page or component', () => {
     const existing = [
       'app/sitemap.ts',
+      'app/robots.ts',
       'lib/constants.ts',
-      ...filesUnder('components/layout'),
+      ...filesUnder('components').filter((f) => !f.includes('booth-map')),
       ...filesUnder('app/(site)').filter((f) => !f.includes('new-arrivals')),
     ]
     for (const f of existing) expect(readFileSync(f, 'utf8'), f).not.toMatch(/new-arrivals/)

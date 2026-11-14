@@ -4,17 +4,28 @@ import { FEED_TAG } from './cache'
 import { getBoothFeed, getFeed, getVisibleItem, includeTestVendors } from './feed'
 
 /**
- * Cached reads for the shopper pages. Shoppers never wait on the database (SPEC 2):
- * results are cached under FEED_TAG, which the items API expires the moment a
- * vendor posts, and refreshed at least every 5 minutes so sold stamps and 30-day
- * expiry roll off on time.
+ * Cached reads for the shopper pages (SPEC 2: shoppers don't wait on the database).
  *
- * The feed page is also built during deploys. If the database can't be reached
- * then, the build uses an empty feed instead of failing, so a Neon outage can
- * never block deploying the rest of the site. At runtime an error is thrown as
- * usual, and Next keeps serving the last good page.
+ * - Cached under FEED_TAG and refreshed at least every 5 minutes, so sold stamps
+ *   and 30-day expiry roll off on time.
+ * - The items API expires FEED_TAG when a vendor posts (expire: 0), so the next
+ *   visitor gets a fresh page that includes the new item. Trade-off, chosen on
+ *   purpose: that one visitor waits for a fresh render instead of getting the old
+ *   page, and if the database fails right then they see an error rather than a stale
+ *   page. The database was awake moments earlier for the post itself, so the wait
+ *   is short. Every other visitor gets the cached page.
+ * - The cache key includes whether test vendors are shown, so a preview's feed can
+ *   never be served on the live site even if the two share a cache.
+ * - The feed page is also built during deploys. If the database can't be reached
+ *   then, the build uses an empty feed instead of failing, so a Neon outage can't
+ *   block deploying the rest of the site. The fallback sits outside the cache, so
+ *   the empty result is never stored as data.
  */
 const REVALIDATE = 300
+
+export function cacheKeyParts(kind: 'feed' | 'booth' | 'item', withTest = includeTestVendors()): string[] {
+  return ['booth-map', kind, withTest ? 'with-test-vendors' : 'live-vendors-only']
+}
 
 async function orEmptyDuringBuild<T>(read: () => Promise<T>, empty: T): Promise<T> {
   try {
@@ -28,21 +39,20 @@ async function orEmptyDuringBuild<T>(read: () => Promise<T>, empty: T): Promise<
 
 const feedFromCache = unstable_cache(
   async () => getFeed(getDb(), { includeTest: includeTestVendors() }),
-  ['booth-map', 'feed'],
+  cacheKeyParts('feed'),
   { tags: [FEED_TAG], revalidate: REVALIDATE }
 )
 
-/** The fallback sits outside the cache, so an empty build-time feed is never stored. */
 export const cachedFeed = () => orEmptyDuringBuild(feedFromCache, [])
 
 export const cachedBoothFeed = unstable_cache(
   async (boothNumber: string) => getBoothFeed(getDb(), boothNumber, { includeTest: includeTestVendors() }),
-  ['booth-map', 'booth'],
+  cacheKeyParts('booth'),
   { tags: [FEED_TAG], revalidate: REVALIDATE }
 )
 
 export const cachedItem = unstable_cache(
   async (id: string) => getVisibleItem(getDb(), id, { includeTest: includeTestVendors() }),
-  ['booth-map', 'item'],
+  cacheKeyParts('item'),
   { tags: [FEED_TAG], revalidate: REVALIDATE }
 )

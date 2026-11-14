@@ -11,13 +11,22 @@ function dateLabel(iso: string) {
   return new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' }).format(new Date(iso))
 }
 
+/** Calendar day in the mall's time zone, as a number of days since 1970. */
+function etDay(ms: number): number {
+  const ymd = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ms))
+  return Math.round(Date.parse(`${ymd}T00:00:00Z`) / 86_400_000)
+}
+
 export function relativeLabel(iso: string, now: number): string {
-  const mins = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60_000))
+  const then = new Date(iso).getTime()
+  const mins = Math.max(0, Math.round((now - then) / 60_000))
   if (mins < 1) return 'Just now'
   if (mins < 60) return `${mins} min ago`
-  const hrs = Math.round(mins / 60)
-  if (hrs < 24) return `${hrs} ${hrs === 1 ? 'hr' : 'hrs'} ago`
-  const days = Math.round(hrs / 24)
+  const days = etDay(now) - etDay(then) // calendar days, so "Yesterday" means yesterday
+  if (days <= 0 || mins < 6 * 60) {
+    const hrs = Math.round(mins / 60)
+    return `${hrs} ${hrs === 1 ? 'hr' : 'hrs'} ago`
+  }
   if (days === 1) return 'Yesterday'
   if (days < 7) return `${days} days ago`
   return dateLabel(iso)

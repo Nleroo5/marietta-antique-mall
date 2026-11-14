@@ -1,5 +1,6 @@
 import { cachedFeed } from '@/lib/booth-map/feed-cache'
 import FeedGrid from '@/components/booth-map/shop/FeedGrid'
+import VisitButtons from '@/components/booth-map/shop/VisitButtons'
 
 /** Cached; refreshed when a vendor posts and at least every 5 minutes. */
 export const revalidate = 300
@@ -10,28 +11,29 @@ export default async function NewArrivalsPage() {
 
   return (
     <>
+      {/* Kept short on phones so the first photos show without scrolling (photos first, SPEC 8). */}
       <section className="border-b border-champagne-dark bg-champagne">
-        <div className="container-custom flex flex-col gap-3 py-7 md:py-10">
-          <span className="inline-flex items-center gap-2 self-start rounded-full bg-mint px-3 py-1.5 text-xs font-bold tracking-[0.08em] text-[#2C2416]">
+        <div className="container-custom flex flex-col gap-2 py-5 md:gap-3 md:py-10">
+          <span className="inline-flex items-center gap-2 self-start rounded-full bg-mint px-3 py-1 text-[11px] font-bold tracking-[0.08em] text-[#2C2416] md:py-1.5 md:text-xs">
             <span className="h-2 w-2 animate-pulse rounded-full bg-[#2C2416]" aria-hidden="true" />
             LIVE FROM THE FLOOR
           </span>
-          <h1 className="font-display text-4xl text-[#2C2416] md:text-5xl">Just In at the Mall</h1>
-          <p className="max-w-2xl text-base text-charcoal-light md:text-lg">
-            Our vendors post new pieces the moment they hit the booth. See what came in, then come find it before someone else does.
+          <h1 className="font-display text-3xl text-[#2C2416] md:text-5xl">Just In at the Mall</h1>
+          <p className="max-w-2xl text-[15px] text-charcoal-light md:text-lg">
+            {live > 0 ? `${live} new ${live === 1 ? 'find' : 'finds'} from our vendors. ` : ''}
+            <span className="hidden sm:inline">Vendors post new pieces the moment they hit the booth. </span>
+            Come find yours before someone else does.
           </p>
-          {live > 0 && (
-            <p className="text-[15px] font-semibold text-[#2C2416]">
-              {live} {live === 1 ? 'find' : 'finds'} on the floor now
-            </p>
-          )}
+          <div className="max-w-md pt-1">
+            <VisitButtons compact />
+          </div>
         </div>
       </section>
 
-      <div className="container-custom py-6 md:py-8">
+      <div className="container-custom py-5 md:py-8">
         <FeedGrid items={items} />
         <p className="mt-6 text-sm text-charcoal-light">
-          Every piece is one of a kind and sold in store. The price on the tag in store is final.
+          Every piece is one of a kind and sold in store. Calling? Ask if it&apos;s still here. The price on the tag in store is final.
         </p>
       </div>
     </>

@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     return json({ error: result.message, code: result.code, indexes: result.indexes }, status)
   }
 
-  // Expire now, so the very next shopper sees the new items (not a stale copy).
+  // Expire now, so the very next shopper sees the new items (trade-off in lib/booth-map/feed-cache.ts).
   revalidateTag(FEED_TAG, { expire: 0 })
   return json({ ok: true, itemIds: result.itemIds })
 }

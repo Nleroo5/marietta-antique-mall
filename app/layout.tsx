@@ -1,27 +1,36 @@
 import type { Metadata } from 'next'
-import { Crete_Round, Inter, Montserrat } from 'next/font/google'
+import localFont from 'next/font/local'
 import './globals.css'
 import { BUSINESS_NAME, LOCATION, SEO_KEYWORDS, GOOGLE_MAPS_URL } from '@/lib/constants'
 
-const creteRound = Crete_Round({
-  subsets: ['latin'],
-  weight: ['400'],
+// Fonts are stored in app/fonts instead of downloaded from Google at build time,
+// which failed intermittently and broke builds (see app/fonts/README.md). Same
+// families, weights, Latin subset and CSS variables as before.
+const creteRound = localFont({
+  src: './fonts/crete-round-latin-400-normal.woff2',
+  weight: '400',
+  style: 'normal',
   variable: '--font-display',
   display: 'swap',
+  fallback: ['Georgia', 'serif'],
 })
 
-const inter = Inter({
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600', '700', '800'],
+const inter = localFont({
+  src: './fonts/inter-latin-wght-normal.woff2',
+  weight: '100 900',
+  style: 'normal',
   variable: '--font-body',
   display: 'swap',
+  fallback: ['-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
 })
 
-const montserrat = Montserrat({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700'],
+const montserrat = localFont({
+  src: './fonts/montserrat-latin-wght-normal.woff2',
+  weight: '100 900',
+  style: 'normal',
   variable: '--font-nav',
   display: 'swap',
+  fallback: ['-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
 })
 
 export const metadata: Metadata = {

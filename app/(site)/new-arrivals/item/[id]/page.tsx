@@ -7,6 +7,7 @@ import { CATEGORY_LABELS } from '@/lib/booth-map/feed-types'
 import { priceText } from '@/components/booth-map/shop/ItemCard'
 import TimeAgo from '@/components/booth-map/shop/TimeAgo'
 import VisitButtons from '@/components/booth-map/shop/VisitButtons'
+import { BUSINESS_NAME } from '@/lib/constants'
 
 export const revalidate = 300
 
@@ -20,10 +21,22 @@ type Props = { params: Promise<{ id: string }> }
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const item = await cachedItem((await params).id)
   if (!item) return { title: 'Item not found' }
+  const description = item.sold
+    ? `${item.title} from Booth ${item.booth} has sold. See what else is new at Marietta Antique Mall.`
+    : `${item.title}, ${priceText(item)}, in Booth ${item.booth} at Marietta Antique Mall.`
+  const image = { url: item.photoUrl, width: item.photoW, height: item.photoH, alt: item.title }
   return {
     title: item.title,
-    description: `${item.title}, ${priceText(item)}, in Booth ${item.booth} at Marietta Antique Mall.`,
-    openGraph: { images: [{ url: item.photoUrl, width: item.photoW, height: item.photoH, alt: item.title }] },
+    description,
+    openGraph: {
+      type: 'website',
+      siteName: BUSINESS_NAME,
+      title: item.title,
+      description,
+      url: `/new-arrivals/item/${item.id}`,
+      images: [image],
+    },
+    twitter: { card: 'summary_large_image', title: item.title, description, images: [item.photoUrl] },
   }
 }
 
@@ -44,7 +57,7 @@ export default async function ItemPage({ params }: Props) {
             alt={item.title}
             width={item.photoW}
             height={item.photoH}
-            priority
+            preload
             sizes="(min-width: 768px) 60vw, 100vw"
             className={`h-auto max-h-[360px] w-auto max-w-full object-contain md:max-h-none md:w-full ${item.sold ? 'opacity-70 grayscale-[60%]' : ''}`}
           />
@@ -61,7 +74,7 @@ export default async function ItemPage({ params }: Props) {
             </Link>
             {item.category && CATEGORY_LABELS[item.category] ? ` · ${CATEGORY_LABELS[item.category]}` : ''} · <TimeAgo iso={item.liveAt} prefix="Posted " />
           </p>
-          <h1 className="font-display text-3xl text-[#2C2416] md:text-4xl">{item.title}</h1>
+          <h1 className="break-words font-display text-3xl text-[#2C2416] md:text-4xl">{item.title}</h1>
           <p className="text-2xl font-bold tabular-nums text-[#2C2416]">{item.sold ? 'Sold' : priceText(item)}</p>
           {item.sold ? (
             <p className="text-base text-charcoal-light">This one found a home. Booth {item.booth} has more where it came from.</p>

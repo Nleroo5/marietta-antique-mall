@@ -12,10 +12,10 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as schema from '@/lib/booth-map/schema'
 import { generateToken, hashToken } from '@/lib/booth-map/tokens'
 
-const h = vi.hoisted(() => ({ db: null as unknown, head: vi.fn() }))
+const h = vi.hoisted(() => ({ db: null as unknown, head: vi.fn(), revalidateTag: vi.fn() }))
 vi.mock('@/lib/booth-map/db', () => ({ getDb: () => h.db }))
 vi.mock('@vercel/blob', () => ({ head: h.head }))
-vi.mock('next/cache', () => ({ revalidateTag: vi.fn() }))
+vi.mock('next/cache', () => ({ revalidateTag: h.revalidateTag }))
 
 import { GET as openLink, HEAD as headLink } from '@/app/(booth)/v/[token]/route'
 import { POST as postItems } from '@/app/api/booth-map/items/route'
@@ -62,6 +62,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   h.head.mockReset()
+  h.revalidateTag.mockReset()
   h.head.mockImplementation(async (url: string) => ({ url, size: 200_000, contentType: 'image/jpeg' }))
 })
 
@@ -177,8 +178,12 @@ describe('POST /api/booth-map/items', () => {
     const res = await postItems(req('/api/booth-map/items', { method: 'POST', body, cookie }))
     expect(res.status).toBe(200)
     expect((await res.json()).itemIds).toHaveLength(2)
+    // The feed cache is expired right away, so the next shopper sees the new items.
+    expect(h.revalidateTag).toHaveBeenCalledTimes(1)
+    expect(h.revalidateTag).toHaveBeenCalledWith('booth-map-feed', { expire: 0 })
     const again = await postItems(req('/api/booth-map/items', { method: 'POST', body, cookie }))
     expect(again.status).toBe(409)
+    expect(h.revalidateTag).toHaveBeenCalledTimes(1) // a rejected post doesn't touch the cache
     expect(await again.json()).toMatchObject({ code: 'ALREADY_POSTED', indexes: [0, 1] })
   })
 

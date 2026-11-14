@@ -9,7 +9,7 @@ export function priceText(item: Pick<FeedItem, 'priceCents' | 'askInStore'>): st
 }
 
 /** One find in the feed or on a booth page. Photo first, then the vendor's own title and price (SPEC 8). */
-export default function ItemCard({ item, priority = false, showBooth = true }: { item: FeedItem; priority?: boolean; showBooth?: boolean }) {
+export default function ItemCard({ item, preload = false, showBooth = true }: { item: FeedItem; preload?: boolean; showBooth?: boolean }) {
   return (
     <Link
       href={`/new-arrivals/item/${item.id}`}
@@ -18,10 +18,10 @@ export default function ItemCard({ item, priority = false, showBooth = true }: {
       <div className="relative aspect-square w-full bg-champagne">
         <Image
           src={item.photoUrl}
-          alt={item.title}
+          alt="" // the title is right below, inside the same link; don't read it twice
           fill
-          sizes="(min-width: 1024px) 240px, (min-width: 640px) 33vw, 50vw"
-          priority={priority}
+          sizes="(min-width: 1280px) 292px, (min-width: 1024px) 23vw, (min-width: 640px) 31vw, 48vw"
+          preload={preload}
           className={`object-cover ${item.sold ? 'opacity-70 grayscale-[60%]' : ''}`}
         />
         {showBooth && (
@@ -35,7 +35,7 @@ export default function ItemCard({ item, priority = false, showBooth = true }: {
         )}
       </div>
       <div className="flex flex-col gap-0.5 p-3">
-        <p className="text-[15px] font-semibold leading-snug text-[#2C2416]">{item.title}</p>
+        <p className="break-words text-[15px] font-semibold leading-snug text-[#2C2416]">{item.title}</p>
         <p className="text-base font-bold tabular-nums text-[#2C2416]">{item.sold ? 'Sold' : priceText(item)}</p>
         <p className="text-[13px] text-charcoal-light">
           <TimeAgo iso={item.liveAt} />

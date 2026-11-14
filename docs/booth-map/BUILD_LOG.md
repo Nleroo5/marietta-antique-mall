@@ -42,3 +42,25 @@ Notes also fixed: unique index on `items.photo_url` (migration 0001, applied); H
 Checks after fixes: 132 tests pass; reintroducing the store and suffix holes fails 3 tests; `tsc` clean; build passes.
 
 Known and accepted: the vendor token appears in Vercel request logs and in browser history for the redirect; link-preview fetches (iMessage, Slack) can sign in a device row (no cookie reaches a person).
+
+## Phase 3: New Arrivals shopper pages (SPEC build step 3)
+
+Built: `/new-arrivals` (feed with category chips, Get directions and Call), `/new-arrivals/item/[id]`, `/new-arrivals/booth/[number]`, all cached (5-minute refresh, expired the moment a vendor posts). Owner decisions: test vendors' items show on preview deployments only; the pages stay hidden until launch (noindex, not in the menu or sitemap; tests enforce both).
+
+My own checks found: the feed is built during deploys, so a Neon outage could have blocked deploying the whole site; it now falls back to an empty feed for that build. My first version of that fallback stored the empty feed in Next's data cache, so the next build reused it; moved outside the cache and proven with a build against an unreachable database followed by a normal one. Also capped the item photo's height on phones so title and price show without scrolling.
+
+Audit (independent reviewer): no must-fix; 6 should-fix, all handled:
+1. The test-vendor setting wasn't part of the cache key, so a shared cache could serve a preview's feed (with test items) on the live site. Now part of every key, with a test.
+2. Expiring the cache on post makes the next visitor wait for a fresh page. Kept on purpose so a vendor who taps "See it on New Arrivals" sees their item; the trade-off is written in `lib/booth-map/feed-cache.ts`.
+3. Shared links to these pages previewed as the homepage. They now have their own Open Graph and Twitter tags (item pages use the item photo).
+4. Made-up booth numbers got real-looking pages. Unknown booths, and booths of paused, removed or (on the live site) test vendors, now 404.
+5. The feed, where ads land, had no Get directions or Call. Added to the feed header, which is also shorter on phones so photos start on the first screen.
+6. Tests added for all of the above, the post-time cache expiry, and hidden-ness across every component.
+
+Notes also fixed: card images no longer repeat the title to screen readers; long titles wrap; image sizes match the real card width; "Yesterday" uses calendar days in Eastern time; sold items' descriptions don't quote a price; the vendor's done screen links to the item itself when one was posted.
+
+Accepted for now: the feed shows the newest 200 items; photo addresses contain the vendor's internal id (not a credential).
+
+## Fonts: stored in the site (owner approved)
+
+Builds failed intermittently, locally and once on Vercel, with a Turbopack error while downloading Google Fonts ("next/font/google queries have exactly one entry"). The three fonts now live in `app/fonts` (Fontsource 5.3.0, OFL licence files included) and load through `next/font/local`. Text measures identically to the Google-downloaded fonts for all 11 font and weight combinations used; no Google Fonts requests. Four builds in a row passed, plus one with internet access blocked.

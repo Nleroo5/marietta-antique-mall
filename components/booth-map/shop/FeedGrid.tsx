@@ -47,7 +47,7 @@ export default function FeedGrid({ items }: { items: FeedItem[] }) {
       )}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-4">
         {shown.map((item, i) => (
-          <ItemCard key={item.id} item={item} priority={i < 4} />
+          <ItemCard key={item.id} item={item} preload={i < 4} />
         ))}
       </div>
     </>

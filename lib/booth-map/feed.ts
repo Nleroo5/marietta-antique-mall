@@ -88,7 +88,25 @@ export async function getFeed(db: AnyDb, opts: FeedOptions): Promise<FeedItem[]>
   return rows.map((r) => toFeedItem(r as Row))
 }
 
-export async function getBoothFeed(db: AnyDb, boothNumber: string, opts: FeedOptions): Promise<FeedItem[]> {
+/**
+ * A booth's items, or null when the booth doesn't exist or has no vendor shoppers
+ * may see (paused, removed, or a test vendor on the live site). Null becomes a 404,
+ * so made-up booth numbers don't get real-looking pages.
+ */
+export async function getBoothFeed(db: AnyDb, boothNumber: string, opts: FeedOptions): Promise<FeedItem[] | null> {
+  const [booth] = await db
+    .select({ id: schema.booths.id })
+    .from(schema.booths)
+    .innerJoin(schema.vendors, eq(schema.vendors.id, schema.booths.vendorId))
+    .where(
+      and(
+        eq(schema.booths.number, boothNumber),
+        eq(schema.vendors.status, 'active'),
+        opts.includeTest ? undefined : eq(schema.vendors.isTest, false)
+      )
+    )
+    .limit(1)
+  if (!booth) return null
   const rows = await base(db)
     .where(and(visible(opts), eq(schema.booths.number, boothNumber)))
     .orderBy(desc(schema.items.liveAt), desc(schema.items.id))
