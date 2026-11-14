@@ -377,6 +377,14 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
               {drafts.length} more {drafts.length === 1 ? 'photo is' : 'photos are'} still waiting on the Add items screen.
             </p>
           )}
+          {/* A full page load with no Referer, so the public page's trackers never see this private page. */}
+          <a
+            href="/new-arrivals"
+            rel="noreferrer"
+            className="inline-flex min-h-[52px] items-center justify-center rounded-lg border-2 border-mauve text-lg font-semibold text-black"
+          >
+            See New Arrivals
+          </a>
           <button type="button" onClick={() => setScreen('add')} className="min-h-[52px] rounded-lg border-2 border-mauve bg-mauve text-lg font-semibold text-black">
             {drafts.length ? 'Back to my photos' : 'Add more'}
           </button>

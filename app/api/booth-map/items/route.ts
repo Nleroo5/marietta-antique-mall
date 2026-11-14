@@ -38,6 +38,7 @@ export async function POST(req: NextRequest) {
     return json({ error: result.message, code: result.code, indexes: result.indexes }, status)
   }
 
-  revalidateTag(FEED_TAG, 'max')
+  // Expire now, so the very next shopper sees the new items (not a stale copy).
+  revalidateTag(FEED_TAG, { expire: 0 })
   return json({ ok: true, itemIds: result.itemIds })
 }

@@ -46,3 +46,19 @@ describe('booth route group', () => {
     expect(readFileSync('app/(site)/layout.tsx', 'utf8')).toMatch(/SiteShell/)
   })
 })
+
+describe('New Arrivals stays hidden until launch (owner decision)', () => {
+  it('is marked noindex', () => {
+    expect(readFileSync('app/(site)/new-arrivals/layout.tsx', 'utf8')).toMatch(/index: false/)
+  })
+
+  it('is not in the sitemap and not linked from the menu, header, footer or any existing page', () => {
+    const existing = [
+      'app/sitemap.ts',
+      'lib/constants.ts',
+      ...filesUnder('components/layout'),
+      ...filesUnder('app/(site)').filter((f) => !f.includes('new-arrivals')),
+    ]
+    for (const f of existing) expect(readFileSync(f, 'utf8'), f).not.toMatch(/new-arrivals/)
+  })
+})
