@@ -10,7 +10,8 @@ export default function VisitButtons({ compact = false }: { compact?: boolean })
   const h = compact ? 'min-h-[44px] text-base' : 'min-h-[52px] text-lg'
   return (
     <div className="flex flex-col gap-2">
-      <div className="grid grid-cols-2 gap-2">
+      {/* Full size stacks on phones so "Call (770) 973-5600" never wraps; compact labels fit side by side. */}
+      <div className={`grid gap-2 ${compact ? 'grid-cols-2' : 'grid-cols-1 sm:grid-cols-2'}`}>
         <a
           href={GOOGLE_MAPS_URL}
           target="_blank"
