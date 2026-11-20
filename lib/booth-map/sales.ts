@@ -1,6 +1,6 @@
 import { and, desc, eq, gt, inArray, isNotNull, isNull, lte } from 'drizzle-orm'
 import * as schema from './schema'
-import { isSalePercent } from './pricing'
+import { isSalePercent, MAX_SALE_PERCENT, MIN_SALE_PERCENT } from './pricing'
 import { formatSaleLastDay, saleEndsAt } from './sale-dates'
 import type { AnyDb, VendorSession } from './types'
 
@@ -88,8 +88,9 @@ export async function startBoothSale(
 ): Promise<SaleResult> {
   const booth = session.booths.find((b) => b.number === input.booth)
   if (!booth) return { ok: false, status: 422, error: 'Pick one of your booths.' }
-  const percent = Number(input.percent)
-  if (!isSalePercent(percent)) return { ok: false, status: 422, error: 'Pick a discount: 10, 15, 20, 25, 30 or 50 percent.' }
+  // Any whole percent from 1 to 90; the vendor types it (SPEC 5b).
+  const percent = typeof input.percent === 'number' ? input.percent : typeof input.percent === 'string' && /^\d+$/.test(input.percent.trim()) ? Number(input.percent) : NaN
+  if (!isSalePercent(percent)) return { ok: false, status: 422, error: `Enter a whole-number discount from ${MIN_SALE_PERCENT}% to ${MAX_SALE_PERCENT}%.` }
   const end = saleEndsAt(typeof input.lastDay === 'string' ? input.lastDay : '', now)
   if (!end.ok) return { ok: false, status: 422, error: end.error }
 

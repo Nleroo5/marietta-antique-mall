@@ -90,6 +90,13 @@ describe('starting a sale', () => {
     expect(log[0].detail).toMatchObject({ after: { percent: 20, lastDay: '2026-11-28' } })
   })
 
+  it('accepts any whole discount the vendor types, from 1% to 90%', async () => {
+    const s = await vendor(['P1', 'P2', 'P3'])
+    expect(await startBoothSale(any(), s, { booth: 'P1', percent: 35, lastDay: '2026-11-28' }, NOW)).toMatchObject({ ok: true, sale: { percent: 35 } })
+    expect(await startBoothSale(any(), s, { booth: 'P2', percent: '12', lastDay: '2026-11-28' }, NOW)).toMatchObject({ ok: true, sale: { percent: 12 } })
+    expect(await startBoothSale(any(), s, { booth: 'P3', percent: 90, lastDay: '2026-11-28' }, NOW)).toMatchObject({ ok: true, sale: { percent: 90 } })
+  })
+
   it('allows a one-day sale that ends tonight, and the 30th day', async () => {
     const s = await vendor(['T1', 'T2'])
     expect((await startBoothSale(any(), s, { booth: 'T1', percent: 10, lastDay: '2026-11-20' }, NOW)).ok).toBe(true)
@@ -122,7 +129,9 @@ describe('starting a sale', () => {
     const s = await vendor()
     const other = await vendor()
     expect(await startBoothSale(any(), s, { booth: other.booths[0].number, percent: 20, lastDay: '2026-11-28' }, NOW)).toMatchObject({ ok: false, status: 422 })
-    expect(await startBoothSale(any(), s, { booth: s.booths[0].number, percent: 22, lastDay: '2026-11-28' }, NOW)).toMatchObject({ ok: false, status: 422 })
+    expect(await startBoothSale(any(), s, { booth: s.booths[0].number, percent: 95, lastDay: '2026-11-28' }, NOW)).toMatchObject({ ok: false, status: 422 })
+    expect(await startBoothSale(any(), s, { booth: s.booths[0].number, percent: 12.5, lastDay: '2026-11-28' }, NOW)).toMatchObject({ ok: false, status: 422 })
+    expect(await startBoothSale(any(), s, { booth: s.booths[0].number, percent: 0, lastDay: '2026-11-28' }, NOW)).toMatchObject({ ok: false, status: 422 })
     expect(await startBoothSale(any(), s, { booth: s.booths[0].number, percent: 20, lastDay: '2026-11-19' }, NOW)).toMatchObject({ ok: false, error: 'That day has already passed. Pick today or a later day.' })
     expect(await startBoothSale(any(), s, { booth: s.booths[0].number, percent: 20, lastDay: '2026-12-21' }, NOW)).toMatchObject({ ok: false, status: 422 })
     expect(await startBoothSale(any(), s, { booth: s.booths[0].number, percent: 20, lastDay: 7 }, NOW)).toMatchObject({ ok: false, status: 422 })

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { formatPrice, isSalePercent, MAX_PRICE_CENTS, parsePriceInput, salePriceCents, SALE_PERCENTS } from '@/lib/booth-map/pricing'
+import { formatPrice, isSalePercent, MAX_PRICE_CENTS, MAX_SALE_PERCENT, MIN_SALE_PERCENT, parsePriceInput, parseSalePercentInput, salePriceCents } from '@/lib/booth-map/pricing'
+
+const ALL_PERCENTS = Array.from({ length: MAX_SALE_PERCENT - MIN_SALE_PERCENT + 1 }, (_, i) => MIN_SALE_PERCENT + i)
 
 describe('salePriceCents: exact discounted price to the cent, half up', () => {
   it.each([
@@ -11,12 +13,15 @@ describe('salePriceCents: exact discounted price to the cent, half up', () => {
     [4999, 15, 4249], // 4249.15
     [4995, 10, 4496], // 4495.5 rounds half up
     [0, 50, 0],
+    [14500, 35, 9425], // any whole percent: $145 at 35% = $94.25
+    [14500, 1, 14355],
+    [14500, 90, 1450],
   ])('%i cents at %i%% -> %i', (price, pct, expected) => {
     expect(salePriceCents(price, pct as 10)).toBe(expected)
   })
 
-  it('matches exact arithmetic for every percent across a wide price range', () => {
-    for (const p of SALE_PERCENTS) {
+  it('matches exact arithmetic for every allowed percent across a wide price range', () => {
+    for (const p of ALL_PERCENTS) {
       for (let cents = 0; cents <= 50_000; cents += 7) {
         const exact = (cents * (100 - p)) / 100
         expect(salePriceCents(cents, p)).toBe(Math.floor(exact + 0.5))
@@ -24,9 +29,10 @@ describe('salePriceCents: exact discounted price to the cent, half up', () => {
     }
   })
 
-  it('is always below the original price for anything priced at 10 cents or more', () => {
-    for (const p of SALE_PERCENTS) {
-      for (let cents = 10; cents <= 20_000; cents += 1) {
+  it('is always below the original price for anything priced at $1 or more, at every percent', () => {
+    // At 1% off, items under 51 cents round back to their own price; from $1 up, never.
+    for (const p of ALL_PERCENTS) {
+      for (let cents = 100; cents <= 20_000; cents += 3) {
         expect(salePriceCents(cents, p)).toBeLessThan(cents)
       }
     }
@@ -41,12 +47,41 @@ describe('salePriceCents: exact discounted price to the cent, half up', () => {
     expect(() => salePriceCents(10.5, 10)).toThrow(RangeError)
     expect(() => salePriceCents(MAX_PRICE_CENTS + 1, 10)).toThrow(RangeError)
   })
+
+  it('rejects percents outside 1 to 90 or not whole', () => {
+    for (const bad of [0, 91, 100, 12.5, -5]) expect(() => salePriceCents(1000, bad)).toThrow(RangeError)
+  })
 })
 
 describe('isSalePercent', () => {
-  it('accepts only the six allowed values', () => {
-    expect(SALE_PERCENTS.every(isSalePercent)).toBe(true)
-    for (const bad of [0, 5, 12, 40, 100, '20', null]) expect(isSalePercent(bad)).toBe(false)
+  it('accepts any whole percent from 1 to 90', () => {
+    expect(ALL_PERCENTS.every(isSalePercent)).toBe(true)
+    for (const ok of [1, 12, 35, 40, 90]) expect(isSalePercent(ok)).toBe(true)
+    for (const bad of [0, 91, 100, 12.5, -1, NaN, '20', null]) expect(isSalePercent(bad)).toBe(false)
+  })
+})
+
+describe('parseSalePercentInput', () => {
+  it.each([
+    ['35', 35],
+    ['35%', 35],
+    [' 35 % ', 35],
+    ['1', 1],
+    ['90', 90],
+    ['07', 7],
+  ])('reads %j as %i', (input, percent) => {
+    expect(parseSalePercentInput(input)).toEqual({ ok: true, percent })
+  })
+
+  it.each([
+    ['', 'Enter a discount, like 15 or 35.'],
+    ['abc', 'Enter the discount as a number, like 15 or 35.'],
+    ['-10', 'Enter the discount as a number, like 15 or 35.'],
+    ['12.5', 'Use a whole number, like 15 or 35.'],
+    ['0', 'Enter a discount from 1% to 90%.'],
+    ['95', 'Enter a discount from 1% to 90%.'],
+  ])('refuses %j', (input, error) => {
+    expect(parseSalePercentInput(input)).toEqual({ ok: false, error })
   })
 })
 

@@ -2,8 +2,16 @@
  * Prices are stored in whole cents and never rewritten by a booth sale. The sale
  * price is worked out when a page renders (SPEC section 5b).
  */
-export const SALE_PERCENTS = [10, 15, 20, 25, 30, 50] as const
-export type SalePercent = (typeof SALE_PERCENTS)[number]
+/**
+ * Booth sale discount: any whole percent from 1 to 90 (decided 2026-11-20; it was a
+ * fixed list of six). Whole numbers keep sale prices exact to the cent; 90 stops a
+ * typo like 100 from listing a booth for free. The same bounds are a database CHECK.
+ */
+export const MIN_SALE_PERCENT = 1
+export const MAX_SALE_PERCENT = 90
+/** One-tap shortcuts on the sale screen. Vendors can type any other percent. */
+export const SALE_QUICK_PICKS = [10, 15, 20, 25, 30, 50] as const
+export type SalePercent = number
 
 export const ITEM_LIFETIME_DAYS = 30
 export const SOLD_STAMP_HOURS = 48
@@ -13,7 +21,20 @@ export const MAX_SALE_DAYS = 30
 export const MAX_PRICE_CENTS = 100_000_000
 
 export function isSalePercent(value: unknown): value is SalePercent {
-  return typeof value === 'number' && (SALE_PERCENTS as readonly number[]).includes(value)
+  return typeof value === 'number' && Number.isInteger(value) && value >= MIN_SALE_PERCENT && value <= MAX_SALE_PERCENT
+}
+
+export type ParsedPercent = { ok: true; percent: number } | { ok: false; error: string }
+
+/** What a vendor types in the discount box: "35", "35%", " 35 % ". Whole numbers only. */
+export function parseSalePercentInput(input: string): ParsedPercent {
+  const raw = String(input ?? '').trim().replace(/\s*%$/, '')
+  if (raw === '') return { ok: false, error: 'Enter a discount, like 15 or 35.' }
+  if (!/^\d+([.,]\d+)?$/.test(raw)) return { ok: false, error: 'Enter the discount as a number, like 15 or 35.' }
+  if (!/^\d+$/.test(raw)) return { ok: false, error: 'Use a whole number, like 15 or 35.' }
+  const percent = Number(raw)
+  if (!isSalePercent(percent)) return { ok: false, error: `Enter a discount from ${MIN_SALE_PERCENT}% to ${MAX_SALE_PERCENT}%.` }
+  return { ok: true, percent }
 }
 
 /**
@@ -28,6 +49,7 @@ export function salePriceCents(priceCents: number, percent: SalePercent): number
   if (!Number.isInteger(priceCents) || priceCents < 0 || priceCents > MAX_PRICE_CENTS) {
     throw new RangeError(`priceCents must be an integer from 0 to ${MAX_PRICE_CENTS}, got ${priceCents}`)
   }
+  if (!isSalePercent(percent)) throw new RangeError(`percent must be a whole number from ${MIN_SALE_PERCENT} to ${MAX_SALE_PERCENT}, got ${percent}`)
   // Integer arithmetic: priceCents * (100 - percent) is exact, and adding 50 before
   // the integer division rounds half up without floating-point error.
   return Math.floor((priceCents * (100 - percent) + 50) / 100)

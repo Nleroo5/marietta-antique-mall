@@ -24,7 +24,7 @@ export function priceSummary(item: PriceFields): string {
   if (!onSale(item)) return priceText(item)
   const pct = item.salePercent as number
   if (item.askInStore || item.priceCents === null) return `Ask in store, ${pct}% off`
-  return `${formatPrice(salePriceCents(item.priceCents, pct as 10))} on sale (${pct}% off ${formatPrice(item.priceCents)})`
+  return `${formatPrice(salePriceCents(item.priceCents, pct))} on sale (${pct}% off ${formatPrice(item.priceCents)})`
 }
 
 /**
@@ -45,7 +45,7 @@ export default function Price({ item, className = '' }: { item: PriceFields; cla
         {formatPrice(item.priceCents)}
       </s>
       <span className="sr-only">now </span>
-      {formatPrice(salePriceCents(item.priceCents, pct as 10))}
+      {formatPrice(salePriceCents(item.priceCents, pct))}
     </p>
   )
 }

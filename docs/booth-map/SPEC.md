@@ -29,6 +29,7 @@ Status labels: **[verified]** = checked against a source this week. **[assumed]*
 | 16 | Open and closed status | Hard-coded "Closes at 6:00 PM" | Reuse the site header's live open and closed logic. |
 | 17 | How vendors get their link | Printed QR card | **Text message only, no cards** (decided 2026-11-20). Vendor-facing copy says "the link the mall texted you". A "text this vendor their link" admin action comes with build step 9. |
 | 18 | Booth sale end | "Pick an end date (default 7 days)"; the preview offered 3, 7, 14 or 30 days | **Vendor picks the exact last day** on a calendar (decided 2026-11-20). Ends at midnight after that day, Eastern. See section 5b. |
+| 19 | Booth sale discount | Six fixed percents (10, 15, 20, 25, 30, 50) | **Any whole percent from 1 to 90**, typed by the vendor, shortcuts for the common ones (decided 2026-11-20). Database CHECK matches. |
 
 Updated clickable preview with the correct brand: https://claude.ai/artifact/9DpWMkNdaACdUiZpg1ARmD
 
@@ -185,7 +186,7 @@ Details that matter:
 
 One button in My items discounts every live item in the vendor's booth. No per-item discounts.
 
-- Flow: tap **Put my booth on sale** -> pick 10, 15, 20, 25, 30 or 50 percent -> pick the **exact last day** of the sale on a calendar (any day from today to 30 days out, suggested a week out) -> confirm on a preview with one real item's before and after price and "Sale runs through Sat, Nov 28".
+- Flow: tap **Put my booth on sale** -> type **any whole-number discount from 1% to 90%** (10, 15, 20, 25, 30 and 50 are one-tap shortcuts) -> pick the **exact last day** of the sale on a calendar (any day from today to 30 days out, suggested a week out) -> confirm on a preview with one real item's before and after price and "Sale runs through Sat, Nov 28".
 - End date: the sale runs through the end of the picked day in mall time (America/New_York), so `ends_at` is midnight at the start of the next day, Eastern. Today is allowed (a one-day sale). The server checks the date again, because some phone date pickers ignore min and max. Never compute the day in server time (Vercel runs on UTC). Code: `lib/booth-map/sale-dates.ts`.
 - Storage: `booth_sales (id, vendor_id, booth_id, percent, starts_at, ends_at, ended_early_at)`. Item prices are never rewritten. The sale price is computed at render as the exact discounted price to the cent, rounded half up: `floor((price_cents * (100 - percent) + 50) / 100)`. Code: `lib/booth-map/pricing.ts`.
 - One active sale per booth. Starting a new one replaces the old one.

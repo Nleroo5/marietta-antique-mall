@@ -255,16 +255,19 @@ describe('booth sales', () => {
     await pgError(
       db.transaction(async (tx) => {
         await tx.update(schema.boothSales).set({ closedAt: new Date() }).where(eq(schema.boothSales.id, first.id))
-        await tx.insert(schema.boothSales).values(sale(vendor.id, booth.id, 40, 7)) // invalid percent
+        await tx.insert(schema.boothSales).values(sale(vendor.id, booth.id, 95, 7)) // invalid percent
       })
     )
     const [still] = await db.select().from(schema.boothSales).where(eq(schema.boothSales.id, first.id))
     expect(still.closedAt).toBeNull()
   })
 
-  it('rejects other percents', async () => {
-    const { vendor, booth } = await vendorWithBooth()
-    expect(await pgError(db.insert(schema.boothSales).values(sale(vendor.id, booth.id, 40, 7)))).toMatch(/booth_sales_percent/)
+  it('accepts any whole percent from 1 to 90 and rejects the rest', async () => {
+    const a = await vendorWithBooth()
+    await db.insert(schema.boothSales).values(sale(a.vendor.id, a.booth.id, 35, 7))
+    const b = await vendorWithBooth()
+    expect(await pgError(db.insert(schema.boothSales).values(sale(b.vendor.id, b.booth.id, 0, 7)))).toMatch(/booth_sales_percent/)
+    expect(await pgError(db.insert(schema.boothSales).values(sale(b.vendor.id, b.booth.id, 91, 7)))).toMatch(/booth_sales_percent/)
   })
 
   it('accepts a sale ending at the end of the 30th day, rejects 33 days or an end before the start', async () => {

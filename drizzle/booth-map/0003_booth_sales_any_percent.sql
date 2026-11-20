@@ -1,0 +1,2 @@
+ALTER TABLE "booth_sales" DROP CONSTRAINT "booth_sales_percent";--> statement-breakpoint
+ALTER TABLE "booth_sales" ADD CONSTRAINT "booth_sales_percent" CHECK ("booth_sales"."percent" between 1 and 90);

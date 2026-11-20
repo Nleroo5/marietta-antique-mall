@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { SALE_PERCENTS, formatPrice, salePriceCents, type SalePercent } from '@/lib/booth-map/pricing'
+import { MAX_SALE_PERCENT, MIN_SALE_PERCENT, SALE_QUICK_PICKS, formatPrice, parseSalePercentInput, salePriceCents } from '@/lib/booth-map/pricing'
 import { formatPickedDay, mallToday } from '@/lib/booth-map/sale-dates'
 import type { BoothSaleView, SalePreviewItem } from '@/lib/booth-map/sales'
 
@@ -30,7 +30,7 @@ export default function BoothSale({ setup, onChange }: { setup: SaleSetup; onCha
   const [boothNo, setBoothNo] = useState(booths[0]?.number ?? '')
   const booth = booths.find((b) => b.number === boothNo) ?? booths[0]
   const [editing, setEditing] = useState(!booth?.active)
-  const [percent, setPercent] = useState<SalePercent>(20)
+  const [percentText, setPercentText] = useState('20')
   const [lastDay, setLastDay] = useState(range.suggested)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -38,6 +38,9 @@ export default function BoothSale({ setup, onChange }: { setup: SaleSetup; onCha
 
   if (!booth) return null
 
+  // Any whole percent from 1 to 90, typed or picked from the shortcuts.
+  const parsedPercent = parseSalePercentInput(percentText)
+  const percent = parsedPercent.ok ? parsedPercent.percent : null
   const dayOk = lastDay >= range.min && lastDay <= range.max && formatPickedDay(lastDay) !== ''
   const dayError = !lastDay
     ? 'Pick the last day of your sale.'
@@ -67,7 +70,7 @@ export default function BoothSale({ setup, onChange }: { setup: SaleSetup; onCha
 
   const pick = (n: string) => {
     setBoothNo(n)
-    setPercent(20)
+    setPercentText('20')
     setLastDay(range.suggested)
     setEditing(!booths.find((b) => b.number === n)?.active)
     setConfirmEnd(false)
@@ -106,7 +109,7 @@ export default function BoothSale({ setup, onChange }: { setup: SaleSetup; onCha
             onClick={() => {
               // Start from the current sale: its discount and its last day (mall time).
               const active = booth.active!
-              setPercent(active.percent as SalePercent)
+              setPercentText(String(active.percent))
               setLastDay(mallToday(new Date(new Date(active.endsAt).getTime() - 1)))
               setEditing(true)
             }}
@@ -131,22 +134,40 @@ export default function BoothSale({ setup, onChange }: { setup: SaleSetup; onCha
             <p className="mt-1 text-base text-charcoal-light">One discount for every live item in Booth {booth.number}, including anything you post during the sale.</p>
           </div>
 
-          <fieldset className="flex flex-col gap-2">
-            <legend className="mb-1 text-sm font-semibold">Discount</legend>
-            <div className="flex flex-wrap gap-2">
-              {SALE_PERCENTS.map((p) => (
+          <div className="flex flex-col gap-2">
+            <label htmlFor="sale-percent" className="text-sm font-semibold">
+              Discount
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                id="sale-percent"
+                type="text"
+                inputMode="numeric"
+                autoComplete="off"
+                value={percentText}
+                onChange={(e) => setPercentText(e.target.value)}
+                aria-describedby="sale-percent-help"
+                className="min-h-[52px] w-28 rounded-lg border-2 border-champagne-dark bg-white px-3 text-right text-2xl font-bold tabular-nums"
+              />
+              <span className="text-2xl font-bold">% off</span>
+            </div>
+            <p id="sale-percent-help" className={`text-sm ${parsedPercent.ok ? 'text-charcoal-light' : 'text-red-700'}`}>
+              {parsedPercent.ok ? `Any whole number from ${MIN_SALE_PERCENT}% to ${MAX_SALE_PERCENT}%. Or tap one:` : parsedPercent.error}
+            </p>
+            <div className="flex flex-wrap gap-2" role="group" aria-label="Common discounts">
+              {SALE_QUICK_PICKS.map((p) => (
                 <button
                   key={p}
                   type="button"
                   aria-pressed={percent === p}
-                  onClick={() => setPercent(p)}
-                  className={`min-h-[48px] min-w-[68px] rounded-full border-2 px-4 text-lg font-semibold ${percent === p ? 'border-charcoal bg-charcoal text-white' : 'border-champagne-dark bg-white text-black'}`}
+                  onClick={() => setPercentText(String(p))}
+                  className={`min-h-[44px] min-w-[64px] rounded-full border-2 px-4 text-lg font-semibold ${percent === p ? 'border-charcoal bg-charcoal text-white' : 'border-champagne-dark bg-white text-black'}`}
                 >
                   {p}%
                 </button>
               ))}
             </div>
-          </fieldset>
+          </div>
 
           <div className="flex flex-col gap-1">
             <label htmlFor="sale-last-day" className="text-sm font-semibold">
@@ -175,7 +196,7 @@ export default function BoothSale({ setup, onChange }: { setup: SaleSetup; onCha
                 <p className="truncate font-semibold">{booth.preview.title}</p>
                 <p className="text-lg font-bold tabular-nums">
                   <s className="mr-1.5 font-normal text-charcoal-light">{formatPrice(booth.preview.priceCents)}</s>
-                  {formatPrice(salePriceCents(booth.preview.priceCents, percent))}
+                  {percent === null ? '…' : formatPrice(salePriceCents(booth.preview.priceCents, percent))}
                 </p>
                 <p className="text-xs text-charcoal-light">How it will look to shoppers</p>
               </div>
@@ -185,10 +206,10 @@ export default function BoothSale({ setup, onChange }: { setup: SaleSetup; onCha
           <button
             type="button"
             onClick={() => send({ action: 'start', booth: booth.number, percent, lastDay })}
-            disabled={busy || !dayOk}
+            disabled={busy || !dayOk || percent === null}
             className="min-h-[56px] rounded-lg border-2 border-mauve bg-mauve text-lg font-bold text-black disabled:opacity-50"
           >
-            {busy ? 'Saving…' : `${booth.active ? 'Save' : 'Start'} ${percent}% sale through ${formatPickedDay(lastDay, false) || '…'}`}
+            {busy ? 'Saving…' : `${booth.active ? 'Save' : 'Start'} ${percent ?? '…'}% sale through ${formatPickedDay(lastDay, false) || '…'}`}
           </button>
           {booth.active && (
             <button type="button" onClick={() => setEditing(false)} disabled={busy} className="min-h-[48px] font-semibold text-black underline">

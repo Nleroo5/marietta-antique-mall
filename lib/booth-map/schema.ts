@@ -61,7 +61,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
-import { MAX_PRICE_CENTS, MAX_SALE_DAYS, SALE_PERCENTS } from './pricing'
+import { MAX_PRICE_CENTS, MAX_SALE_DAYS, MAX_SALE_PERCENT, MIN_SALE_PERCENT } from './pricing'
 
 const id = () => uuid('id').primaryKey().defaultRandom()
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
@@ -249,7 +249,7 @@ export const boothSales = pgTable(
   (t) => [
     index('booth_sales_booth_idx').on(t.boothId, t.endsAt),
     uniqueIndex('booth_sales_one_open_per_booth').on(t.boothId).where(sql`${t.closedAt} is null`),
-    check('booth_sales_percent', sql`${t.percent} in (${sqlList(SALE_PERCENTS)})`),
+    check('booth_sales_percent', sql`${t.percent} between ${sql.raw(String(MIN_SALE_PERCENT))} and ${sql.raw(String(MAX_SALE_PERCENT))}`),
     // Two days of slack over the 30-day maximum. The sale ends at midnight after the
     // picked day, Eastern, so starting just after midnight already uses almost a full
     // extra day, and the November clock change adds one more hour. One day of slack

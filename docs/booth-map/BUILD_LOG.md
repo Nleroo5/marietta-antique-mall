@@ -86,3 +86,9 @@ Audit (independent reviewer): 1 must-fix, 2 should-fix, all handled:
 2. The shopper join matched on booth only, so if a booth changed hands one vendor's sale could discount another vendor's items. It now also matches the item's vendor, with a test.
 3. The booth page still said "the price on the tag in store is final" under its sale banner. Fixed.
 Nits fixed: switching booths on the sale screen resets the discount and day; replacing a sale that had already ended is logged as a new sale, not a replacement. Accepted: if the vendor page stays open past midnight, its date range is a day old until reload (the server still checks the real date).
+
+## Booth sales: any discount (2026-11-20)
+
+Nicolas asked for vendors to enter any discount instead of six fixed percents. Vendors now type any whole number from 1% to 90% (10, 15, 20, 25, 30 and 50 stay as one-tap shortcuts). Whole numbers keep sale prices exact to the cent; the 90% cap stops a typo like 100 from listing a booth for free. The database CHECK matches (migration `0003_booth_sales_any_percent`, applied to Neon); the sale price math is tested at every percent from 1 to 90. At 1% off, items under 51 cents round back to their own price (half-up rounding); from $1 up the sale price is always lower. Still off on the live site until `BOOTH_SALES_ENABLED=true`.
+
+Checks: 191 tests pass, `tsc` clean, build passes; end to end on the local build: 95% refused with a message, 35% shows $145 crossed out to $94.25 and reaches the feed, booth and item pages.
