@@ -194,7 +194,7 @@ One button in My items discounts every live item in the vendor's booth. No per-i
 - Cache: revalidate the feed, map and booth pages when a sale starts or ends. A cron job ends expired sales and revalidates.
 - Sold matching: when a booth has an active sale, the matcher compares report prices against both the full price and the sale price.
 - Every sale item shows: "Sale price confirmed at the register."
-- [unknown] How the mall's register applies booth-wide discounts. Do not ship this until the owner answers.
+- [unknown] How the mall's register applies booth-wide discounts. Do not ship this until the owner answers. Built on the booth-map branch and switched off on the live site until `BOOTH_SALES_ENABLED=true` is set in Vercel (on for previews and local). Code: `lib/booth-map/sales.ts`, `app/api/booth-map/sale/route.ts`, `components/booth-map/BoothSale.tsx`.
 
 ---
 

@@ -1,0 +1,2 @@
+ALTER TABLE "booth_sales" DROP CONSTRAINT "booth_sales_window";--> statement-breakpoint
+ALTER TABLE "booth_sales" ADD CONSTRAINT "booth_sales_window" CHECK ("booth_sales"."ends_at" > "booth_sales"."starts_at" and "booth_sales"."ends_at" <= "booth_sales"."starts_at" + interval '32 days');

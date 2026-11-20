@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   if (!isSameOrigin(req)) return json({ error: 'This request came from somewhere else.' }, 403)
   const db = getDb()
   const session = await resolveSession(db, req.cookies.get(VENDOR_COOKIE)?.value)
-  if (!session) return json({ error: 'Your vendor link has expired. Scan your card again.' }, 401)
+  if (!session) return json({ error: 'Your vendor link has expired. Tap the link the mall texted you again.' }, 401)
 
   const body = (await req.json().catch(() => null)) as { items?: unknown; consent?: unknown } | null
   const checked = validateCards(body?.items, session)

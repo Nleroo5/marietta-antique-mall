@@ -5,6 +5,7 @@ import { upload } from '@vercel/blob/client'
 import { preparePhoto, uuid } from '@/lib/booth-map/photo-client'
 import { parsePriceInput } from '@/lib/booth-map/pricing'
 import { MAX_ITEMS_PER_POST } from '@/lib/booth-map/blob'
+import BoothSale, { type SaleBooth, type SaleSetup } from './BoothSale'
 
 /**
  * Vendor upload page (SPEC section 5). Built for one thumb, standing in a booth:
@@ -13,7 +14,7 @@ import { MAX_ITEMS_PER_POST } from '@/lib/booth-map/blob'
  * a dropped connection or a reload.
  */
 
-type Screen = 'home' | 'add' | 'done'
+type Screen = 'home' | 'add' | 'done' | 'sale'
 
 interface Draft {
   key: string
@@ -39,6 +40,8 @@ interface Props {
   booths: string[]
   liveCount: number
   needsConsent: boolean
+  /** Booth sales, when they are switched on (lib/booth-map/sales.ts). */
+  sales?: SaleSetup
 }
 
 const EXPIRED = 'Your vendor link has expired. Tap the link the mall texted you again. Your text is saved on this phone.'
@@ -106,8 +109,9 @@ function boothLabel(booths: string[]) {
   return booths.length === 1 ? `Booth ${booths[0]}` : `Booths ${booths.join(', ')}`
 }
 
-export default function VendorApp({ vendorId, displayName, booths, liveCount, needsConsent }: Props) {
+export default function VendorApp({ vendorId, displayName, booths, liveCount, needsConsent, sales }: Props) {
   const [screen, setScreen] = useState<Screen>('home')
+  const [saleBooths, setSaleBooths] = useState<SaleBooth[]>(sales?.booths ?? [])
   const [drafts, setDrafts] = useState<Draft[]>([])
   const [consentNeeded, setConsentNeeded] = useState(needsConsent)
   const [consent, setConsent] = useState(false)
@@ -360,6 +364,15 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
     </header>
   )
 
+  if (screen === 'sale' && sales) {
+    return (
+      <>
+        {header}
+        <BoothSale setup={{ range: sales.range, booths: saleBooths }} onChange={setSaleBooths} />
+      </>
+    )
+  }
+
   if (screen === 'done') {
     return (
       <>
@@ -420,6 +433,24 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
             <span>My items</span>
             <span className="text-base font-medium">{live} live</span>
           </div>
+          {sales && saleBooths.length > 0 && (() => {
+            const on = saleBooths.filter((b) => b.active)
+            return (
+              <button
+                type="button"
+                onClick={() => setScreen('sale')}
+                className="flex min-h-[64px] items-center justify-between gap-3 rounded-xl border border-champagne-dark bg-white px-4 text-left"
+              >
+                <span className="flex flex-col">
+                  <span className="text-lg font-semibold">{on.length ? `Booth sale on: ${on[0].active!.percent}% off` : 'Put my booth on sale'}</span>
+                  <span className="text-sm text-charcoal-light">
+                    {on.length ? `Through ${on[0].active!.lastDayLabel}${on.length > 1 ? ` (+${on.length - 1} more)` : ''}` : 'Discount everything, ending on the day you pick'}
+                  </span>
+                </span>
+                <span aria-hidden="true" className="text-2xl">›</span>
+              </button>
+            )
+          })()}
           <p className="text-sm leading-relaxed text-charcoal-light">
             This is your private page. Treat your link like a key. If you lose it, ask the front desk for a new link and the old one stops working.
           </p>

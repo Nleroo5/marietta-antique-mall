@@ -4,6 +4,7 @@ import { notFound, permanentRedirect } from 'next/navigation'
 import { cachedBoothFeed } from '@/lib/booth-map/feed-cache'
 import { normalizeBoothNumber } from '@/lib/booth-map/feed'
 import ItemCard from '@/components/booth-map/shop/ItemCard'
+import { onSale, saleLastDay } from '@/components/booth-map/shop/Price'
 import VisitButtons from '@/components/booth-map/shop/VisitButtons'
 
 export const revalidate = 300
@@ -34,6 +35,7 @@ export default async function BoothPage({ params }: Props) {
   if (!items) notFound() // no such booth, or no vendor shoppers can see
 
   const live = items.filter((i) => !i.sold).length
+  const sale = items.find(onSale)
   const summary =
     live > 0
       ? `${live} new ${live === 1 ? 'find' : 'finds'} from this booth.`
@@ -49,6 +51,11 @@ export default async function BoothPage({ params }: Props) {
       <div className="mt-2 flex flex-col gap-2">
         <h1 className="font-display text-4xl text-[#2C2416]">Booth {number}</h1>
         <p className="text-base text-charcoal-light">{summary}</p>
+        {sale && (
+          <p className="mt-1 rounded-lg bg-mauve-light px-4 py-3 text-base text-[#2C2416]">
+            <b>Booth sale: {sale.salePercent}% off everything</b> through {saleLastDay(sale)}. Sale price confirmed at the register.
+          </p>
+        )}
       </div>
       {items.length > 0 && (
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-4">
@@ -58,7 +65,7 @@ export default async function BoothPage({ params }: Props) {
         </div>
       )}
       <div className="mt-8 max-w-xl">
-        <VisitButtons />
+        <VisitButtons onSale={!!sale} />
       </div>
     </div>
   )

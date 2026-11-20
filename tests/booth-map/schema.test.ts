@@ -267,7 +267,7 @@ describe('booth sales', () => {
     expect(await pgError(db.insert(schema.boothSales).values(sale(vendor.id, booth.id, 40, 7)))).toMatch(/booth_sales_percent/)
   })
 
-  it('accepts a sale ending at the end of the 30th day, rejects 32 days or an end before the start', async () => {
+  it('accepts a sale ending at the end of the 30th day, rejects 33 days or an end before the start', async () => {
     const a = await vendorWithBooth()
     const startsAt = new Date('2026-11-13T20:00:00Z') // 3 PM Eastern
     await db.insert(schema.boothSales).values({
@@ -278,7 +278,7 @@ describe('booth sales', () => {
       endsAt: new Date('2026-12-14T04:59:00Z'), // 11:59 PM Eastern on Dec 13
     })
     const b = await vendorWithBooth()
-    expect(await pgError(db.insert(schema.boothSales).values(sale(b.vendor.id, b.booth.id, 20, 32)))).toMatch(/booth_sales_window/)
+    expect(await pgError(db.insert(schema.boothSales).values(sale(b.vendor.id, b.booth.id, 20, 33)))).toMatch(/booth_sales_window/) // 30 days + 2 of slack (clock changes)
     expect(await pgError(db.insert(schema.boothSales).values(sale(b.vendor.id, b.booth.id, 20, -1)))).toMatch(/booth_sales_window/)
   })
 

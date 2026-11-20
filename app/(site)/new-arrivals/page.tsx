@@ -1,6 +1,7 @@
 import { cachedFeed } from '@/lib/booth-map/feed-cache'
 import FeedGrid from '@/components/booth-map/shop/FeedGrid'
 import VisitButtons from '@/components/booth-map/shop/VisitButtons'
+import { onSale } from '@/components/booth-map/shop/Price'
 
 /** Cached; refreshed when a vendor posts and at least every 5 minutes. */
 export const revalidate = 300
@@ -33,7 +34,8 @@ export default async function NewArrivalsPage() {
       <div className="container-custom py-5 md:py-8">
         <FeedGrid items={items} />
         <p className="mt-6 text-sm text-charcoal-light">
-          Every piece is one of a kind and sold in store. Calling? Ask if it&apos;s still here. The price on the tag in store is final.
+          Every piece is one of a kind and sold in store. Calling? Ask if it&apos;s still here.{' '}
+          {items.some(onSale) ? 'Tag prices are final, except booth sale prices shown here, which are confirmed at the register.' : 'The price on the tag in store is final.'}
         </p>
       </div>
     </>

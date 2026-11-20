@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
 
   const db = getDb()
   const session = await resolveSession(db, req.cookies.get(VENDOR_COOKIE)?.value)
-  if (!session) return json({ error: 'Your vendor link has expired. Scan your card again.' }, 401)
+  if (!session) return json({ error: 'Your vendor link has expired. Tap the link the mall texted you again.' }, 401)
 
   let body: HandleUploadBody
   try {

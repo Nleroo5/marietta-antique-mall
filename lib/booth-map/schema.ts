@@ -250,11 +250,13 @@ export const boothSales = pgTable(
     index('booth_sales_booth_idx').on(t.boothId, t.endsAt),
     uniqueIndex('booth_sales_one_open_per_booth').on(t.boothId).where(sql`${t.closedAt} is null`),
     check('booth_sales_percent', sql`${t.percent} in (${sqlList(SALE_PERCENTS)})`),
-    // One day of slack over the 30-day maximum, so "ends at the end of the picked
-    // day" and daylight-saving changes are never rejected. The UI enforces 30.
+    // Two days of slack over the 30-day maximum. The sale ends at midnight after the
+    // picked day, Eastern, so starting just after midnight already uses almost a full
+    // extra day, and the November clock change adds one more hour. One day of slack
+    // rejected that case (found in the booth-sale audit). The app enforces 30 days.
     check(
       'booth_sales_window',
-      sql`${t.endsAt} > ${t.startsAt} and ${t.endsAt} <= ${t.startsAt} + interval '${sql.raw(String(MAX_SALE_DAYS + 1))} days'`
+      sql`${t.endsAt} > ${t.startsAt} and ${t.endsAt} <= ${t.startsAt} + interval '${sql.raw(String(MAX_SALE_DAYS + 2))} days'`
     ),
     check('booth_sales_ended_early', sql`${t.endedEarlyAt} is null or (${t.endedEarlyAt} >= ${t.startsAt} and ${t.closedAt} is not null)`),
   ]

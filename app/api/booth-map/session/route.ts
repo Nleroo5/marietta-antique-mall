@@ -8,5 +8,5 @@ export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
   const session = await resolveSession(getDb(), req.cookies.get(VENDOR_COOKIE)?.value)
-  return session ? json({ ok: true }) : json({ error: 'Your vendor link has expired. Scan your card again.' }, 401)
+  return session ? json({ ok: true }) : json({ error: 'Your vendor link has expired. Tap the link the mall texted you again.' }, 401)
 }

@@ -96,3 +96,9 @@ export function saleEndsAt(lastDay: string, now: Date = new Date()): SaleEnd {
 export function formatSaleLastDay(endsAt: Date): string {
   return new Intl.DateTimeFormat('en-US', { timeZone: MALL_TIME_ZONE, weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(endsAt.getTime() - 1))
 }
+
+/** "Sat, Nov 28" (or "Nov 28") for a YYYY-MM-DD picked on the calendar. It is a calendar date, so no time zone shifts it. */
+export function formatPickedDay(ymd: string, weekday = true): string {
+  if (!isRealDate(ymd)) return ''
+  return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', ...(weekday ? { weekday: 'short' } : {}), month: 'short', day: 'numeric' }).format(new Date(`${ymd}T12:00:00Z`))
+}

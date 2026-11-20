@@ -64,3 +64,25 @@ Accepted for now: the feed shows the newest 200 items; photo addresses contain t
 ## Fonts: stored in the site (owner approved)
 
 Builds failed intermittently, locally and once on Vercel, with a Turbopack error while downloading Google Fonts ("next/font/google queries have exactly one entry"). The three fonts now live in `app/fonts` (Fontsource 5.3.0, OFL licence files included) and load through `next/font/local`. Text measures identically to the Google-downloaded fonts for all 11 font and weight combinations used; no Google Fonts requests. Four builds in a row passed, plus one with internet access blocked.
+
+## Booth sales with an exact end date (SPEC 5b, ahead of build order)
+
+Nicolas asked for vendors to pick the exact day their sale ends, working on the site itself, not live yet.
+
+Built:
+- `lib/booth-map/sale-dates.ts`: the vendor picks the last day; the sale runs through the end of that day in mall time (America/New_York), so `ends_at` is midnight after it, Eastern. Today to 30 days out. Worked out in Eastern time because the server runs on UTC (a naive version would have ended Eastern sales at 7 or 8 pm the night before). Tested across both daylight-saving switches, the UTC date boundary, and the `booth_sales_window` database check.
+- `lib/booth-map/sales.ts` and `POST /api/booth-map/sale`: start, replace (one open sale per booth) and end a sale, each in one transaction with an activity log row. Two taps at once get a 409 from the unique index instead of a 500.
+- Vendor page: "Put my booth on sale" row, then discount chips, a "Last day of the sale" date field (also checked on the server, because some phone date pickers ignore min and max), a before-and-after preview with one of the vendor's real items, Change the sale, and a two-tap End sale now.
+- Shopper pages: struck-through price and exact sale price, "Ask in store · N% off", a % OFF tag on cards, an On sale filter, and sale banners on booth and item pages ("Sale price confirmed at the register"). Tag-price wording changes while a sale shows.
+
+**Not live:** booth sales are off on the live site (`VERCEL_ENV=production`) until `BOOTH_SALES_ENABLED=true` is set, because the owner still has to say how the register applies a booth discount. On for previews and local builds. Nothing is merged to main.
+
+Known and accepted: a sale drops off shopper pages at the next cache refresh after midnight (within 5 minutes); there is no job yet that marks ended sales closed (they simply stop counting at `ends_at`); "My items" (build step 5) is still not built, so the sale row sits on the vendor home screen.
+
+Checks: 172 tests pass, `tsc` clean, build passes, and an end-to-end run on the local build as the demo vendor (start a 30% sale through Sat, Nov 28; a past day is refused; feed, filter, booth and item pages show it; ending it removes it).
+
+Audit (independent reviewer): 1 must-fix, 2 should-fix, all handled:
+1. Starting a sale just after midnight in October and picking the furthest day put `ends_at` 31 days and 59 minutes after `starts_at` (the November clock change adds an hour), which the database window check rejected with a 500. The check now allows 30 days plus 2 of slack (migration `0002_booth_sales_window_slack`, applied to Neon), with a test for that exact case.
+2. The shopper join matched on booth only, so if a booth changed hands one vendor's sale could discount another vendor's items. It now also matches the item's vendor, with a test.
+3. The booth page still said "the price on the tag in store is final" under its sale banner. Fixed.
+Nits fixed: switching booths on the sale screen resets the discount and day; replacing a sale that had already ended is logged as a new sale, not a replacement. Accepted: if the vendor page stays open past midnight, its date range is a day old until reload (the server still checks the real date).

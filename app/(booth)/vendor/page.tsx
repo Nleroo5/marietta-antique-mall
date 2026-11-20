@@ -2,6 +2,8 @@ import { cookies } from 'next/headers'
 import { getDb } from '@/lib/booth-map/db'
 import { resolveSession, VENDOR_COOKIE } from '@/lib/booth-map/access'
 import { countLiveItems } from '@/lib/booth-map/items'
+import { activeSalesForVendor, boothSalesEnabled, salePreviewItems } from '@/lib/booth-map/sales'
+import { saleDateRange } from '@/lib/booth-map/sale-dates'
 import VendorApp from '@/components/booth-map/VendorApp'
 
 export const dynamic = 'force-dynamic'
@@ -28,6 +30,14 @@ export default async function VendorPage() {
   }
 
   const liveCount = await countLiveItems(db, session.vendorId)
+  let sales
+  if (boothSalesEnabled() && session.booths.length > 0) {
+    const [active, previews] = await Promise.all([activeSalesForVendor(db, session.vendorId), salePreviewItems(db, session.vendorId)])
+    sales = {
+      range: saleDateRange(),
+      booths: session.booths.map((b) => ({ number: b.number, active: active.find((s) => s.boothNumber === b.number) ?? null, preview: previews[b.number] ?? null })),
+    }
+  }
   return (
     <VendorApp
       vendorId={session.vendorId}
@@ -35,6 +45,7 @@ export default async function VendorPage() {
       booths={session.booths.map((b) => b.number)}
       liveCount={liveCount}
       needsConsent={!session.consentAt}
+      sales={sales}
     />
   )
 }

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { CATEGORY_LABELS, type FeedItem } from '@/lib/booth-map/feed-types'
 import ItemCard from './ItemCard'
+import { onSale } from './Price'
 
 /**
  * The feed with category chips. Filtering happens in the browser, so the page itself
@@ -15,7 +16,10 @@ export default function FeedGrid({ items }: { items: FeedItem[] }) {
     const present = new Set(items.map((i) => i.category).filter((c): c is string => !!c && c in CATEGORY_LABELS))
     return Object.keys(CATEGORY_LABELS).filter((c) => present.has(c))
   }, [items])
-  const shown = cat === 'all' ? items : items.filter((i) => i.category === cat)
+  const anySale = useMemo(() => items.some(onSale), [items])
+  const shown = cat === 'all' ? items : cat === 'sale' ? items.filter(onSale) : items.filter((i) => i.category === cat)
+  // One category chip on its own filters nothing, so categories show only when there are two or more.
+  const chips = ['all', ...(anySale ? ['sale'] : []), ...(cats.length > 1 ? cats : [])]
 
   if (items.length === 0) {
     return (
@@ -28,9 +32,9 @@ export default function FeedGrid({ items }: { items: FeedItem[] }) {
 
   return (
     <>
-      {cats.length > 1 && (
+      {chips.length > 1 && (
         <div className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1" role="group" aria-label="Filter by category">
-          {['all', ...cats].map((c) => (
+          {chips.map((c) => (
             <button
               key={c}
               type="button"
@@ -40,7 +44,7 @@ export default function FeedGrid({ items }: { items: FeedItem[] }) {
                 cat === c ? 'border-charcoal bg-charcoal text-white' : 'border-champagne-dark bg-white text-[#2C2416] hover:border-mauve'
               }`}
             >
-              {c === 'all' ? 'All' : CATEGORY_LABELS[c]}
+              {c === 'all' ? 'All' : c === 'sale' ? 'On sale' : CATEGORY_LABELS[c]}
             </button>
           ))}
         </div>

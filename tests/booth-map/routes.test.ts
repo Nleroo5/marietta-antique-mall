@@ -21,6 +21,8 @@ import { GET as openLink, HEAD as headLink } from '@/app/(booth)/v/[token]/route
 import { POST as postItems } from '@/app/api/booth-map/items/route'
 import { POST as uploadToken } from '@/app/api/booth-map/upload/route'
 import { GET as sessionCheck } from '@/app/api/booth-map/session/route'
+import { POST as saleRoute } from '@/app/api/booth-map/sale/route'
+import { addCalendarDays, saleDateRange } from '@/lib/booth-map/sale-dates'
 import { getPayloadFromClientToken } from '@vercel/blob/client'
 
 const SITE = 'https://booths.test'
@@ -216,5 +218,50 @@ describe('POST /api/booth-map/items', () => {
     const body = { consent: true, items: [card(vendor.id)] }
     expect((await postItems(req('/api/booth-map/items', { method: 'POST', body, cookie, origin: 'https://evil.test' }))).status).toBe(403)
     expect((await postItems(req('/api/booth-map/items', { method: 'POST', body }))).status).toBe(401)
+  })
+})
+
+describe('POST /api/booth-map/sale', () => {
+  it('starts a sale on the exact day picked, refreshes the shopper pages, and ends it', async () => {
+    const { token, vendor } = await vendorWithLink()
+    const { cookie } = await signIn(token)
+    const [booth] = await db.select().from(schema.booths).where(eq(schema.booths.vendorId, vendor.id))
+    const lastDay = addCalendarDays(saleDateRange().min, 8)
+    const res = await saleRoute(req('/api/booth-map/sale', { method: 'POST', cookie, body: { action: 'start', booth: booth.number, percent: 20, lastDay } }))
+    expect(res.status).toBe(200)
+    expect(res.headers.get('cache-control')).toContain('no-store')
+    const { sale } = await res.json()
+    expect(sale).toMatchObject({ boothNumber: booth.number, percent: 20 })
+    expect(h.revalidateTag).toHaveBeenCalledWith('booth-map-feed', { expire: 0 })
+
+    const end = await saleRoute(req('/api/booth-map/sale', { method: 'POST', cookie, body: { action: 'end', booth: booth.number } }))
+    expect(end.status).toBe(200)
+    expect((await end.json()).sale).toBeNull()
+  })
+
+  it('rejects a bad day with a message the page shows, and needs the same origin and a signed-in vendor', async () => {
+    const { token, vendor } = await vendorWithLink()
+    const { cookie } = await signIn(token)
+    const [booth] = await db.select().from(schema.booths).where(eq(schema.booths.vendorId, vendor.id))
+    const past = addCalendarDays(saleDateRange().min, -1)
+    const bad = await saleRoute(req('/api/booth-map/sale', { method: 'POST', cookie, body: { action: 'start', booth: booth.number, percent: 20, lastDay: past } }))
+    expect(bad.status).toBe(422)
+    expect((await bad.json()).error).toBe('That day has already passed. Pick today or a later day.')
+    expect(h.revalidateTag).not.toHaveBeenCalled()
+    expect((await saleRoute(req('/api/booth-map/sale', { method: 'POST', body: { action: 'end', booth: booth.number } }))).status).toBe(401)
+    expect((await saleRoute(req('/api/booth-map/sale', { method: 'POST', cookie, origin: null, body: { action: 'end', booth: booth.number } }))).status).toBe(403)
+    expect((await saleRoute(req('/api/booth-map/sale', { method: 'POST', cookie, body: { action: 'nope' } }))).status).toBe(400)
+  })
+
+  it('is switched off on the live site until BOOTH_SALES_ENABLED is set', async () => {
+    const before = process.env.VERCEL_ENV
+    process.env.VERCEL_ENV = 'production'
+    try {
+      const res = await saleRoute(req('/api/booth-map/sale', { method: 'POST', body: { action: 'end', booth: 'X' } }))
+      expect(res.status).toBe(404)
+    } finally {
+      if (before === undefined) delete process.env.VERCEL_ENV
+      else process.env.VERCEL_ENV = before
+    }
   })
 })

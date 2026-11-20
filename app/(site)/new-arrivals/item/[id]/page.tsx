@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { cachedItem } from '@/lib/booth-map/feed-cache'
 import { CATEGORY_LABELS } from '@/lib/booth-map/feed-types'
-import { priceText } from '@/components/booth-map/shop/ItemCard'
+import Price, { onSale, priceSummary, saleLastDay } from '@/components/booth-map/shop/Price'
 import TimeAgo from '@/components/booth-map/shop/TimeAgo'
 import VisitButtons from '@/components/booth-map/shop/VisitButtons'
 import { BUSINESS_NAME } from '@/lib/constants'
@@ -23,7 +23,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!item) return { title: 'Item not found' }
   const description = item.sold
     ? `${item.title} from Booth ${item.booth} has sold. See what else is new at Marietta Antique Mall.`
-    : `${item.title}, ${priceText(item)}, in Booth ${item.booth} at Marietta Antique Mall.`
+    : `${item.title}, ${priceSummary(item)}, in Booth ${item.booth} at Marietta Antique Mall.`
   const image = { url: item.photoUrl, width: item.photoW, height: item.photoH, alt: item.title }
   return {
     title: item.title,
@@ -75,13 +75,18 @@ export default async function ItemPage({ params }: Props) {
             {item.category && CATEGORY_LABELS[item.category] ? ` · ${CATEGORY_LABELS[item.category]}` : ''} · <TimeAgo iso={item.liveAt} prefix="Posted " />
           </p>
           <h1 className="break-words font-display text-3xl text-[#2C2416] md:text-4xl">{item.title}</h1>
-          <p className="text-2xl font-bold tabular-nums text-[#2C2416]">{item.sold ? 'Sold' : priceText(item)}</p>
+          <Price item={item} className="text-2xl font-bold tabular-nums text-[#2C2416]" />
+          {onSale(item) && (
+            <p className="rounded-lg bg-mauve-light px-4 py-3 text-base text-[#2C2416]">
+              <b>Booth {item.booth} is {item.salePercent}% off everything</b> through {saleLastDay(item)}. Sale price confirmed at the register.
+            </p>
+          )}
           {item.sold ? (
             <p className="text-base text-charcoal-light">This one found a home. Booth {item.booth} has more where it came from.</p>
           ) : (
             <p className="text-base text-charcoal-light">Title and price are written by the vendor. Find it in Booth {item.booth}.</p>
           )}
-          <VisitButtons />
+          <VisitButtons onSale={onSale(item)} />
           <Link
             href={`/new-arrivals/booth/${encodeURIComponent(item.booth)}`}
             className="inline-flex min-h-[48px] items-center justify-center rounded-lg border-2 border-champagne-dark bg-white px-5 font-semibold text-[#2C2416] hover:border-mauve"

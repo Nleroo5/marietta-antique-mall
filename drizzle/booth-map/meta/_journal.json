@@ -15,6 +15,13 @@
       "when": 1794595126958,
       "tag": "0001_items_photo_url_unique",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795203029022,
+      "tag": "0002_booth_sales_window_slack",
+      "breakpoints": true
     }
   ]
 }

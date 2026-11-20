@@ -6,7 +6,7 @@ import { formatPhoneLink } from '@/lib/utils'
  * (tracking for them is SPEC build step 7). Holds are not agreed with the owner yet,
  * so the copy asks shoppers to check the item is still here.
  */
-export default function VisitButtons({ compact = false }: { compact?: boolean }) {
+export default function VisitButtons({ compact = false, onSale = false }: { compact?: boolean; onSale?: boolean }) {
   const h = compact ? 'min-h-[44px] text-base' : 'min-h-[52px] text-lg'
   return (
     <div className="flex flex-col gap-2">
@@ -27,7 +27,11 @@ export default function VisitButtons({ compact = false }: { compact?: boolean })
           {compact ? 'Call the mall' : `Call ${CONTACT_INFO.phone}`}
         </a>
       </div>
-      {!compact && <p className="text-sm text-charcoal-light">Calling? Ask if it&apos;s still here. The price on the tag in store is final.</p>}
+      {!compact && (
+        <p className="text-sm text-charcoal-light">
+          Calling? Ask if it&apos;s still here. {onSale ? 'The sale price is confirmed at the register.' : 'The price on the tag in store is final.'}
+        </p>
+      )}
     </div>
   )
 }

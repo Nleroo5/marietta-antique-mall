@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, or, type SQL } from 'drizzle-orm'
+import { and, desc, eq, gt, isNull, lte, or, sql, type SQL } from 'drizzle-orm'
 import * as schema from './schema'
 import { SOLD_STAMP_HOURS } from './pricing'
 import type { AnyDb } from './types'
@@ -21,6 +21,8 @@ export const FEED_LIMIT = 200
 
 export interface FeedOptions {
   includeTest: boolean
+  /** Show booth sales (off on the live site until the owner says yes; see lib/booth-map/sales.ts). */
+  includeSales?: boolean
   now?: Date
 }
 
@@ -54,9 +56,11 @@ const columns = {
   photoH: schema.items.photoH,
   liveAt: schema.items.liveAt,
   status: schema.items.status,
+  salePercent: schema.boothSales.percent,
+  saleEndsAt: schema.boothSales.endsAt,
 }
 
-type Row = { [K in keyof typeof columns]: unknown } & { liveAt: Date | null; status: string }
+type Row = { [K in keyof typeof columns]: unknown } & { liveAt: Date | null; status: string; salePercent: number | null; saleEndsAt: Date | null }
 
 function toFeedItem(r: Row): FeedItem {
   return {
@@ -71,20 +75,36 @@ function toFeedItem(r: Row): FeedItem {
     photoH: r.photoH as number,
     liveAt: (r.liveAt ?? new Date(0)).toISOString(),
     sold: r.status === 'sold',
+    salePercent: r.salePercent ?? null,
+    saleEndsAt: r.saleEndsAt ? r.saleEndsAt.toISOString() : null,
   }
 }
 
-function base(db: AnyDb) {
+/** The booth's running sale, if any (at most one: one open sale per booth is a unique index). */
+function base(db: AnyDb, opts: FeedOptions) {
+  const now = opts.now ?? new Date()
   return db
     .select(columns)
     .from(schema.items)
     .innerJoin(schema.booths, eq(schema.booths.id, schema.items.boothId))
     .innerJoin(schema.vendors, eq(schema.vendors.id, schema.items.vendorId))
+    .leftJoin(
+      schema.boothSales,
+      and(
+        opts.includeSales ? undefined : sql`false`,
+        eq(schema.boothSales.boothId, schema.items.boothId),
+        // Only the item's own vendor's sale: if a booth changes hands, one vendor's sale never discounts another's items.
+        eq(schema.boothSales.vendorId, schema.items.vendorId),
+        isNull(schema.boothSales.closedAt),
+        lte(schema.boothSales.startsAt, now),
+        gt(schema.boothSales.endsAt, now)
+      )
+    )
 }
 
 /** Newest first. */
 export async function getFeed(db: AnyDb, opts: FeedOptions): Promise<FeedItem[]> {
-  const rows = await base(db).where(visible(opts)).orderBy(desc(schema.items.liveAt), desc(schema.items.id)).limit(FEED_LIMIT)
+  const rows = await base(db, opts).where(visible(opts)).orderBy(desc(schema.items.liveAt), desc(schema.items.id)).limit(FEED_LIMIT)
   return rows.map((r) => toFeedItem(r as Row))
 }
 
@@ -107,7 +127,7 @@ export async function getBoothFeed(db: AnyDb, boothNumber: string, opts: FeedOpt
     )
     .limit(1)
   if (!booth) return null
-  const rows = await base(db)
+  const rows = await base(db, opts)
     .where(and(visible(opts), eq(schema.booths.number, boothNumber)))
     .orderBy(desc(schema.items.liveAt), desc(schema.items.id))
     .limit(FEED_LIMIT)
@@ -118,7 +138,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export async function getVisibleItem(db: AnyDb, id: string, opts: FeedOptions): Promise<FeedItem | null> {
   if (!UUID.test(id)) return null
-  const rows = await base(db).where(and(visible(opts), eq(schema.items.id, id))).limit(1)
+  const rows = await base(db, opts).where(and(visible(opts), eq(schema.items.id, id))).limit(1)
   return rows[0] ? toFeedItem(rows[0] as Row) : null
 }
 

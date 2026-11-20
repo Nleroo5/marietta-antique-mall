@@ -130,7 +130,8 @@ describe('feed visibility', () => {
 
   it('carries what the card needs and nothing about the vendor', async () => {
     const [first] = await getFeed(any(), { includeTest: false, now: NOW })
-    expect(Object.keys(first).sort()).toEqual(['askInStore', 'booth', 'category', 'id', 'liveAt', 'photoH', 'photoUrl', 'photoW', 'priceCents', 'sold', 'title'])
+    expect(Object.keys(first).sort()).toEqual(['askInStore', 'booth', 'category', 'id', 'liveAt', 'photoH', 'photoUrl', 'photoW', 'priceCents', 'saleEndsAt', 'salePercent', 'sold', 'title'])
+    expect(first.salePercent).toBeNull() // sales off unless asked for (the live site)
     expect(first.booth).toBe('114')
     expect(first.liveAt).toBe(hoursAgo(1).toISOString())
   })

@@ -13,6 +13,10 @@ export interface FeedItem {
   /** ISO time the item went live, used for "posted 2 hours ago". */
   liveAt: string
   sold: boolean
+  /** Booth sale running now (SPEC 5b), or null. Prices are never rewritten; the sale price is worked out on the page. */
+  salePercent: number | null
+  /** ISO time the sale ends (midnight after its last day, mall time), or null. */
+  saleEndsAt: string | null
 }
 
 export const CATEGORY_LABELS: Record<string, string> = {
