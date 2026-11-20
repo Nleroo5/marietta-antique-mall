@@ -5,14 +5,14 @@ import { counterKey, isBlocked, recordHit } from '@/lib/booth-map/rate-limit'
 import { clientIp, cookieIsSecure, withPrivateHeaders } from '@/lib/booth-map/http'
 
 /**
- * A vendor's private link (printed as a QR code). Swaps the token for a cookie and
+ * A vendor's private link (sent to them by text). Swaps the token for a cookie and
  * redirects to /vendor, so the token never stays in the address bar (SPEC 9).
  *
  * Rate limits, per IP, stored in the database:
  * - Wrong links: 10 in 15 minutes blocks wrong links from that IP for an hour. A
- *   valid card still works from a blocked IP, so one person scanning old cards on
+ *   valid link still works from a blocked IP, so one person trying old links on
  *   the mall wifi can't lock every vendor out.
- * - New phones signed in: 30 an hour, so one card can't create devices without end.
+ * - New phones signed in: 30 an hour, so one link can't create devices without end.
  *
  * Note: the token is part of the request path, so it appears in Vercel's request
  * logs and the browser's history entry for the redirect.
@@ -28,7 +28,7 @@ function problemPage(status: 404 | 429): NextResponse {
   const line =
     status === 429
       ? 'Too many tries from this connection. Wait an hour, or ask at the front desk.'
-      : "This link doesn't work. Ask at the front desk for a new vendor card."
+      : "This link doesn't work. Ask at the front desk for a new link."
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Vendor page</title></head><body style="margin:0;font:17px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#F7F0E8;color:#2C2416;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px;text-align:center"><div style="max-width:420px"><p style="font-size:20px;font-weight:600;margin:0 0 8px">Marietta Antique Mall</p><p style="margin:0">${line}</p></div></body></html>`
   return withPrivateHeaders(new NextResponse(html, { status, headers: { 'Content-Type': 'text/html; charset=utf-8' } }))
 }

@@ -27,6 +27,7 @@ Status labels: **[verified]** = checked against a source this week. **[assumed]*
 | 14 | Business model line | "Mall pays one monthly fee" | Pricing parked, matching the master plan. |
 | 15 | Holds | Demo says "we will hold it" | "Call to check it's still here" until the owner decides. |
 | 16 | Open and closed status | Hard-coded "Closes at 6:00 PM" | Reuse the site header's live open and closed logic. |
+| 17 | How vendors get their link | Printed QR card | **Text message only, no cards** (decided 2026-11-20). Vendor-facing copy says "the link the mall texted you". A "text this vendor their link" admin action comes with build step 9. |
 
 Updated clickable preview with the correct brand: https://claude.ai/artifact/9DpWMkNdaACdUiZpg1ARmD
 
@@ -92,7 +93,7 @@ Rules:
 | AI | `claude-haiku-5-5`, structured output (`output_config.format`), image by URL, effort `low` | Photo check plus title suggestion in one call, about $0.0005 per photo. Also first pass on sold matching. Escalate unclear matches to `claude-sonnet-5-5`. |
 | Inbound email | Resend: the account's managed receiving address to start, or subdomain `finds.mariettaantiquemall.com` with an MX record | Sales reports only. Webhook carries metadata only; body and attachments are fetched by API [verified]. Attachment URLs expire after 1 hour. Received emails count against the Resend quota. |
 | Outbound email | Resend | Only "did this sell?" and the monthly stats email. |
-| Vendor access | Private link per vendor, `/v/[token]`. No password, no PIN. | Link is printed as a QR code on a card. Token is swapped for a cookie on first visit. Staff can reset a link. See section 9. |
+| Vendor access | Private link per vendor, `/v/[token]`. No password, no PIN. | The front desk texts each vendor their link (no printed cards, decided 2026-11-20). Token is swapped for a cookie on first visit. Staff can reset a link. See section 9. |
 | Admin access | One passcode in an env var plus a signed cookie | Upgrade later if several staff need their own logins. |
 | Scheduled jobs | Vercel Cron | Retry sweeper, nightly expiry, sale end, photo cleanup, daily digest. Pro allows schedules down to once a minute. |
 | Analytics | GA4, Meta Pixel + Conversions API, shopper pages only | Pixel, GA4 and Microsoft Clarity load from `app/layout.tsx` on every route today. Route groups are needed to keep them off vendor and admin pages (see section 0, item 1). |
@@ -175,7 +176,7 @@ Details that matter:
 - The phone keyboard's microphone works for titles. Mention it in the vendor guide.
 - If the connection drops, keep the cards and retry. Never lose typed text.
 - Desktop gets the same page with a drag and drop zone.
-- Vendor guide fits on one card: scan, add photo, type what's on the tag, post.
+- Vendor guide is the 90-second how-to video plus the same four steps in the text that delivers the link: tap your link, add photos, type what's on the tag and the price, post.
 
 ---
 
@@ -274,7 +275,7 @@ One change: the item view shows the vendor's own title and price. There's no AI-
 
 - **Vendor link.** Token is 32 random bytes, stored hashed, revocable from admin. Never derive the URL from a booth number or name. Rate limit `/v/*` by IP and block after repeated bad tokens, with counters stored in Neon (Upstash is not configured, and the in-memory limiter in `lib/rate-limit.ts` does not hold across server instances).
 - **Cookie swap.** First visit to `/v/[token]` sets an HttpOnly, Secure, SameSite=Lax cookie (1 year) and redirects to `/vendor`. The token never stays in the address bar.
-- **No PIN (decided 2026-11-13).** The link is the only lock. Anyone holding a vendor's card can act as that vendor until staff reset the link. That is accepted, and covered by: the cookie swap, a one-tap link reset in admin, the activity log with undo, new-device use in the daily digest, and a line on the card saying "Treat this like a key. Lost it? Ask the front desk for a new one."
+- **No PIN (decided 2026-11-13).** The link is the only lock. Anyone holding a vendor's link can act as that vendor until staff reset the link. That is accepted, and covered by: the cookie swap, a one-tap link reset in admin, the activity log with undo, new-device use in the daily digest, and a line in the text message and on the vendor page saying the link works like a key and the front desk can send a new one.
 - **No trackers on vendor routes.** Do not load Meta Pixel, GA4, Microsoft Clarity or any third-party script on `/v/*`, `/vendor/*` or `/admin/*`. They would send the URL to third parties, and Clarity records sessions. All three load from `app/layout.tsx` today.
 - **Headers on vendor and admin routes.** `X-Robots-Tag: noindex, nofollow`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`. Keep these routes out of the sitemap and never link to them from public pages.
 - **Nothing before auth.** No vendor name in the page title or Open Graph tags. The page shows nothing until the cookie check passes.
@@ -316,7 +317,7 @@ Checked against pricing pages on 2026-11-13. Assumes 100 vendors and about 2,000
 | Rate limiting | $0 | $0 | Counters in Neon. No Upstash. |
 | **Total new spend** | **$2 to $34** | **$10 to $41** | Most likely about $5 to $15 |
 
-One-time: about 100 vendor QR cards, roughly $30 to $60.
+One-time: none. Vendor links go out by text from the mall's phone (no printed cards, decided 2026-11-20).
 
 ---
 

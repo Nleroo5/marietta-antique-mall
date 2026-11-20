@@ -20,7 +20,7 @@ export default async function VendorPage() {
         <div className="max-w-sm">
           <p className="font-display text-2xl">Marietta Antique Mall</p>
           <p className="mt-3 text-base">
-            Open this page by scanning the QR code on your vendor card. If you don&apos;t have a card, ask at the front desk.
+            Open this page from the private link the mall texted you. Can&apos;t find it? Ask at the front desk.
           </p>
         </div>
       </main>

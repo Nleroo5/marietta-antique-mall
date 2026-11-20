@@ -41,7 +41,7 @@ interface Props {
   needsConsent: boolean
 }
 
-const EXPIRED = 'Your vendor link has expired. Scan your card again. Your text is saved on this phone.'
+const EXPIRED = 'Your vendor link has expired. Tap the link the mall texted you again. Your text is saved on this phone.'
 const storageKey = (vendorId: string) => `mam-booth-map-drafts:${vendorId}`
 
 /** Saves every card's text, and the photo too once it has uploaded. */
@@ -421,7 +421,7 @@ export default function VendorApp({ vendorId, displayName, booths, liveCount, ne
             <span className="text-base font-medium">{live} live</span>
           </div>
           <p className="text-sm leading-relaxed text-charcoal-light">
-            This is your private page. Treat your card like a key. If it goes missing, ask the front desk for a new link and the old one stops working.
+            This is your private page. Treat your link like a key. If you lose it, ask the front desk for a new link and the old one stops working.
           </p>
         </main>
       </>

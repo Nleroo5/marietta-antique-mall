@@ -96,7 +96,7 @@ export async function openVendorLink(db: AnyDb, token: string, existingCookie?: 
 }
 
 /**
- * Staff action for a lost card: issues a new link and signs out every phone that
+ * Staff action for a lost or shared link: issues a new link and signs out every phone that
  * used the old one, in one transaction. Returns the new token (shown once).
  */
 export async function resetVendorLink(db: AnyDb, vendorId: string): Promise<string> {
