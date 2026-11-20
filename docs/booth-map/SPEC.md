@@ -27,8 +27,8 @@ Status labels: **[verified]** = checked against a source this week. **[assumed]*
 | 14 | Business model line | "Mall pays one monthly fee" | Pricing parked, matching the master plan. |
 | 15 | Holds | Demo says "we will hold it" | "Call to check it's still here" until the owner decides. |
 | 16 | Open and closed status | Hard-coded "Closes at 6:00 PM" | Reuse the site header's live open and closed logic. |
-| 18 | Booth sale end | "Pick an end date (default 7 days)"; the preview offered 3, 7, 14 or 30 days | **Vendor picks the exact last day** on a calendar (decided 2026-11-20). Ends at midnight after that day, Eastern. See section 5b. |
 | 17 | How vendors get their link | Printed QR card | **Text message only, no cards** (decided 2026-11-20). Vendor-facing copy says "the link the mall texted you". A "text this vendor their link" admin action comes with build step 9. |
+| 18 | Booth sale end | "Pick an end date (default 7 days)"; the preview offered 3, 7, 14 or 30 days | **Vendor picks the exact last day** on a calendar (decided 2026-11-20). Ends at midnight after that day, Eastern. See section 5b. |
 
 Updated clickable preview with the correct brand: https://claude.ai/artifact/9DpWMkNdaACdUiZpg1ARmD
 
