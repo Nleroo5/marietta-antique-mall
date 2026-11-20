@@ -17,13 +17,12 @@ import {
   Shirt,
   BookOpen,
   HelpCircle,
-  Handshake,
-  Gift,
   MapPin,
   Check,
   Pencil,
   RotateCcw,
 } from 'lucide-react'
+import { BELOW_RETAIL_NOTICE, MAX_ASKING_PRICE, formatDollars, parseAskingPrice } from '@/lib/asking-price'
 
 // This page renders inside the site's root layout, which already provides
 // <Header /> and <Footer />. The wizard keeps a persistent bottom action bar
@@ -32,7 +31,8 @@ import {
 // ── Types ──────────────────────────────────────────────────────────
 type Intent = 'sell' | 'donate' | null
 type Condition = 'excellent' | 'good' | 'fair' | 'poor' | null
-type PricingIntent = 'offer' | 'asking' | 'donate' | null
+// Sellers always name a price ('asking'); donors give the item free.
+type PricingIntent = 'asking' | 'donate' | null
 type Era = 'pre-1900' | '1900-1950' | '1950-1980' | 'after-1980' | 'unknown' | null
 type Acquisition = 'inherited' | 'purchased' | 'found' | 'other' | null
 type Timeline = 'no-rush' | 'within-month' | 'this-week' | null
@@ -60,6 +60,7 @@ interface FormData {
   acquisition: Acquisition
   pricingIntent: PricingIntent
   askingPrice: string
+  belowRetailAck: boolean
   zip: string
   name: string
   email: string
@@ -80,6 +81,7 @@ const INITIAL_FORM: FormData = {
   acquisition: null,
   pricingIntent: null,
   askingPrice: '',
+  belowRetailAck: false,
   zip: '',
   name: '',
   email: '',
@@ -188,7 +190,7 @@ function StepWrapper({
 const PHOTO_PROMPTS = [
   '',
   'Got it! Now try the back or any maker’s marks.',
-  'Any damage to show? Honesty gets better offers.',
+  'Any damage to show? Better to mention it now.',
   'Looking good. Add up to 2 more or continue.',
 ]
 
@@ -250,6 +252,7 @@ export default function SellOrDonate() {
   const [direction, setDirection] = useState(1)
   const [form, setForm] = useState<FormData>(INITIAL_FORM)
   const [status, setStatus] = useState<Status>('idle')
+  const [errorMessage, setErrorMessage] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const update = useCallback(
@@ -283,6 +286,7 @@ export default function SellOrDonate() {
     form.photos.forEach((p) => URL.revokeObjectURL(p.preview))
     setForm(INITIAL_FORM)
     setStatus('idle')
+    setErrorMessage('')
     setDirection(1)
     setStep(1)
     window.scrollTo({ top: 0 })
@@ -299,10 +303,8 @@ export default function SellOrDonate() {
       case 4:
         return true
       case 5:
-        return (
-          form.pricingIntent !== null &&
-          (form.pricingIntent !== 'asking' || form.askingPrice.length > 0)
-        )
+        // Sellers must name a valid price and acknowledge the reseller notice.
+        return parseAskingPrice(form.askingPrice) !== null && form.belowRetailAck
       case 6:
         return form.zip.length >= 5 && form.name.length >= 2 && /\S+@\S+\.\S+/.test(form.email)
       case 7:
@@ -394,6 +396,7 @@ export default function SellOrDonate() {
   // ── Submit ─────────────────────────────────────────────────────
   const handleSubmit = async () => {
     setStatus('loading')
+    setErrorMessage('')
     try {
       const photoUrls = form.photos
         .map((p) => p.cdnUrl)
@@ -413,7 +416,8 @@ export default function SellOrDonate() {
           dimensions: form.dimensions,
           acquisition: form.acquisition,
           pricingIntent: form.pricingIntent,
-          askingPrice: form.askingPrice,
+          askingPrice: form.intent === 'sell' ? form.askingPrice : '',
+          belowRetailAck: form.intent === 'sell' ? form.belowRetailAck : false,
           zip: form.zip,
           name: form.name,
           email: form.email,
@@ -423,7 +427,10 @@ export default function SellOrDonate() {
         }),
       })
 
-      if (!res.ok) throw new Error('Submit failed')
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error || '')
+      }
       await res.json()
 
       // Track GA4 lead conversion — consistent with the vendor application form.
@@ -436,7 +443,8 @@ export default function SellOrDonate() {
       }
 
       setStatus('success')
-    } catch {
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : '')
       setStatus('error')
     }
   }
@@ -457,8 +465,12 @@ export default function SellOrDonate() {
                   value={form.intent}
                   onChange={(v) => {
                     update('intent', v)
-                    if (v === 'donate') update('pricingIntent', 'donate')
-                    if (v === 'sell') update('pricingIntent', null)
+                    if (v === 'donate') {
+                      update('pricingIntent', 'donate')
+                      update('askingPrice', '')
+                      update('belowRetailAck', false)
+                    }
+                    if (v === 'sell') update('pricingIntent', 'asking')
                     if (v) {
                       setDirection(1)
                       setStep(2)
@@ -500,10 +512,10 @@ export default function SellOrDonate() {
               )}
               {step === 5 && (
                 <StepPricing
-                  pricingIntent={form.pricingIntent}
                   askingPrice={form.askingPrice}
-                  onIntent={(v) => update('pricingIntent', v)}
+                  belowRetailAck={form.belowRetailAck}
                   onAskingPrice={(v) => update('askingPrice', v)}
+                  onBelowRetailAck={(v) => update('belowRetailAck', v)}
                 />
               )}
               {step === 6 && (
@@ -527,7 +539,7 @@ export default function SellOrDonate() {
 
             {status === 'error' && (
               <p className="text-sm text-red-600 mt-4 text-center font-body px-4">
-                Something went wrong. Please try again.
+                {errorMessage || 'Something went wrong. Please try again.'}
               </p>
             )}
           </div>
@@ -590,7 +602,7 @@ export default function SellOrDonate() {
 // ── Step 1: Intent ─────────────────────────────────────────────────
 function StepIntent({ value, onChange }: { value: Intent; onChange: (v: Intent) => void }) {
   const cards: { intent: Intent; icon: typeof ShoppingBag; title: string; desc: string }[] = [
-    { intent: 'sell', icon: ShoppingBag, title: 'Sell an item', desc: 'Get an offer from Marietta Antique Mall' },
+    { intent: 'sell', icon: ShoppingBag, title: 'Sell an item', desc: 'Tell the mall your price' },
     { intent: 'donate', icon: Heart, title: 'Donate', desc: 'Pass it on to the mall' },
   ]
 
@@ -652,7 +664,7 @@ function StepPhotos({
     <div className="pt-8 pb-4">
       <h1 className="text-2xl sm:text-[28px] font-display text-charcoal mb-2">Add a few photos</h1>
       <p className="text-sm text-charcoal/50 font-body mb-8">
-        Clear, well-lit photos help the mall make a better offer.
+        Clear, well-lit photos help the mall decide faster.
       </p>
 
       <input
@@ -884,7 +896,7 @@ function StepDetails({
   return (
     <div className="pt-8 pb-4">
       <h1 className="text-2xl sm:text-[28px] font-display text-charcoal mb-2">
-        Help the mall give a better offer
+        Help the mall understand the piece
       </h1>
       <p className="text-sm text-charcoal/50 font-body mb-8">All optional — skip anything you don’t know.</p>
 
@@ -972,102 +984,83 @@ function StepDetails({
   )
 }
 
-// ── Step 5: Pricing Intent ─────────────────────────────────────────
+// ── Step 5: Asking price (sellers only) ────────────────────────────
 function StepPricing({
-  pricingIntent,
   askingPrice,
-  onIntent,
+  belowRetailAck,
   onAskingPrice,
+  onBelowRetailAck,
 }: {
-  pricingIntent: PricingIntent
   askingPrice: string
-  onIntent: (v: PricingIntent) => void
+  belowRetailAck: boolean
   onAskingPrice: (v: string) => void
+  onBelowRetailAck: (v: boolean) => void
 }) {
   const priceInputRef = useRef<HTMLInputElement>(null)
-
-  const cards: { value: PricingIntent; icon: typeof Handshake; title: string; desc: string }[] = [
-    { value: 'offer', icon: Handshake, title: 'Make me an offer', desc: 'Let the mall suggest a price' },
-    { value: 'asking', icon: ShoppingBag, title: 'I have a price in mind', desc: 'Tell the mall what you’re looking for' },
-    { value: 'donate', icon: Gift, title: 'Free — I’d like to donate', desc: 'Pass it on to the mall' },
-  ]
+  useEffect(() => {
+    priceInputRef.current?.focus()
+  }, [])
+  const invalid = askingPrice.length > 0 && parseAskingPrice(askingPrice) === null
 
   return (
     <div className="pt-8 pb-4">
-      <h1 className="text-2xl sm:text-[28px] font-display text-charcoal mb-2">What are you hoping for?</h1>
-      <p className="text-sm text-charcoal/50 font-body mb-10">
-        This isn’t a commitment — it just helps the mall respond faster.
+      <h1 className="text-2xl sm:text-[28px] font-display text-charcoal mb-2">What price do you want for it?</h1>
+      <p className="text-sm text-charcoal/50 font-body mb-8">
+        Enter the amount you’d accept. The mall will reply with a yes, a counteroffer or a pass.
       </p>
 
-      <div className="flex flex-col gap-3">
-        {cards.map(({ value, icon: Icon, title, desc }) => (
-          <motion.button
-            key={value}
-            onClick={() => {
-              onIntent(value)
-              if (value === 'asking') setTimeout(() => priceInputRef.current?.focus(), 100)
-            }}
-            whileTap={{ scale: 0.98 }}
-            className={`flex items-center gap-4 p-5 rounded-xl border-2 text-left transition-all ${
-              pricingIntent === value
-                ? 'border-[#222222] bg-white shadow-sm'
-                : 'border-[#dddddd] hover:border-[#222222] bg-white'
-            }`}
-          >
-            <div
-              className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
-                pricingIntent === value ? 'bg-[#222222]/10 text-[#222222]' : 'bg-charcoal/5 text-charcoal/40'
-              }`}
-            >
-              <Icon className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="font-semibold text-charcoal font-body text-[15px]">{title}</p>
-              <p className="text-sm text-charcoal/45 font-body">{desc}</p>
-            </div>
-          </motion.button>
-        ))}
+      <label
+        htmlFor="asking-price"
+        className="block text-xs font-semibold text-charcoal/50 uppercase tracking-wide mb-1.5 font-body"
+      >
+        Your asking price
+      </label>
+      <div className="relative">
+        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-charcoal/40 font-semibold font-body">
+          $
+        </span>
+        <input
+          id="asking-price"
+          ref={priceInputRef}
+          type="text"
+          inputMode="numeric"
+          autoComplete="off"
+          value={askingPrice}
+          onChange={(e) => onAskingPrice(e.target.value.replace(/\D/g, '').slice(0, 7))}
+          placeholder="e.g. 250"
+          aria-invalid={invalid}
+          aria-describedby="asking-price-help"
+          className={`w-full px-4 py-3 pl-8 rounded-lg border text-sm text-charcoal placeholder:text-charcoal/25 focus:outline-none focus:ring-1 bg-white transition-colors font-body ${
+            invalid
+              ? 'border-red-500 focus:border-red-500 focus:ring-red-500'
+              : 'border-[#dddddd] focus:border-[#222222] focus:ring-[#222222]'
+          }`}
+        />
+      </div>
+      <p
+        id="asking-price-help"
+        className={`text-xs font-body mt-1.5 ${invalid ? 'text-red-600' : 'text-charcoal/40'}`}
+      >
+        {invalid
+          ? `Enter a whole dollar amount from $1 to ${formatDollars(MAX_ASKING_PRICE)}.`
+          : 'Whole dollars. Required.'}
+      </p>
+
+      <div className="mt-6 rounded-xl border border-[#dddddd] bg-[#f7f7f7] p-4">
+        <p className="text-sm font-semibold text-charcoal font-body mb-1">{BELOW_RETAIL_NOTICE.title}</p>
+        <p className="text-sm text-charcoal/70 font-body leading-relaxed">{BELOW_RETAIL_NOTICE.body}</p>
       </div>
 
-      <p className="text-xs text-charcoal/35 font-body text-center mt-5 leading-relaxed">
-        Stores typically offer 30-50% of an item’s retail value to cover their overhead and resale
-        margin. Setting realistic expectations helps you get a faster response.
-      </p>
-
-      <AnimatePresence>
-        {pricingIntent === 'asking' && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            className="overflow-hidden"
-          >
-            <div className="mt-4">
-              <label className="block text-xs font-semibold text-charcoal/50 uppercase tracking-wide mb-1.5 font-body">
-                Your asking price
-              </label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm text-charcoal/40 font-semibold font-body">
-                  $
-                </span>
-                <input
-                  ref={priceInputRef}
-                  type="text"
-                  inputMode="decimal"
-                  value={askingPrice}
-                  onChange={(e) => onAskingPrice(e.target.value.replace(/[^0-9.]/g, ''))}
-                  placeholder="e.g. 250"
-                  className="w-full px-4 py-3 pl-8 rounded-lg border border-[#dddddd] text-sm text-charcoal placeholder:text-charcoal/25 focus:outline-none focus:border-[#222222] focus:ring-1 focus:ring-[#222222] bg-white transition-colors font-body"
-                />
-              </div>
-              <p className="text-xs text-charcoal/30 font-body mt-1.5">
-                The mall may counter — this just sets expectations.
-              </p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <label htmlFor="below-retail-ack" className="mt-4 flex items-start gap-3 cursor-pointer select-none">
+        <input
+          id="below-retail-ack"
+          type="checkbox"
+          checked={belowRetailAck}
+          onChange={(e) => onBelowRetailAck(e.target.checked)}
+          className="mt-0.5 h-5 w-5 shrink-0 rounded border-[#bbbbbb] accent-[#222222] cursor-pointer"
+        />
+        <span className="text-sm text-charcoal font-body leading-snug">{BELOW_RETAIL_NOTICE.acknowledgement}</span>
+      </label>
     </div>
   )
 }
@@ -1242,12 +1235,9 @@ function StepReview({ form, onEdit }: { form: FormData; onEdit: (step: number) =
   const conditionLabel = CONDITIONS.find((c) => c.value === form.condition)?.label ?? ''
   const eraLabel = ERAS.find((e) => e.value === form.era)?.label ?? ''
   const acquisitionLabel = ACQUISITIONS.find((a) => a.value === form.acquisition)?.label ?? ''
-  const pricingLabel =
-    form.pricingIntent === 'offer'
-      ? 'Make me an offer'
-      : form.pricingIntent === 'asking'
-        ? `Asking $${form.askingPrice}`
-        : 'Donate (free)'
+  const price = parseAskingPrice(form.askingPrice)
+  const isSale = form.intent === 'sell'
+  const pricingLabel = isSale && price !== null ? formatDollars(price) : 'Donate (free)'
 
   return (
     <div className="pt-8 pb-4">
@@ -1307,8 +1297,11 @@ function StepReview({ form, onEdit }: { form: FormData; onEdit: (step: number) =
           )}
 
           {/* Pricing */}
-          <ReviewRow label="Pricing" onEdit={() => onEdit(form.intent === 'donate' ? 1 : 5)}>
+          <ReviewRow label={isSale ? 'Asking price' : 'Pricing'} onEdit={() => onEdit(isSale ? 5 : 1)}>
             <p className="text-sm text-charcoal/70 font-body">{pricingLabel}</p>
+            {isSale && (
+              <p className="text-xs text-charcoal/45 font-body mt-0.5">Reminder: the mall buys below retail.</p>
+            )}
           </ReviewRow>
 
           {/* Location & Contact */}

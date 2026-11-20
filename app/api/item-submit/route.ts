@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Resend } from 'resend'
 import { rateLimit } from '@/lib/rate-limit'
 import { partnerPromoHtml } from '@/lib/transactional-emails'
+import { formatDollars, parseAskingPrice } from '@/lib/asking-price'
 
 // Lazy initialization to avoid build-time errors when the key is absent.
 let resend: Resend | null = null
@@ -76,8 +77,8 @@ export async function POST(request: NextRequest) {
     maker,
     dimensions,
     acquisition,
-    pricingIntent,
     askingPrice,
+    belowRetailAck,
     zip,
     name,
     email,
@@ -94,8 +95,8 @@ export async function POST(request: NextRequest) {
     maker?: string
     dimensions?: { h?: string; w?: string; d?: string }
     acquisition?: string
-    pricingIntent?: string
     askingPrice?: string
+    belowRetailAck?: boolean
     zip?: string
     name?: string
     email?: string
@@ -117,6 +118,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid email address' }, { status: 400 })
   }
 
+  if (intent !== 'sell' && intent !== 'donate') {
+    return NextResponse.json({ error: 'Choose whether you want to sell or donate the item.' }, { status: 400 })
+  }
+
+  // Sellers must name a whole-dollar price and acknowledge that the mall buys below retail.
+  const price = intent === 'sell' ? parseAskingPrice(askingPrice) : null
+  if (intent === 'sell' && price === null) {
+    return NextResponse.json({ error: 'Please enter your asking price in whole dollars.' }, { status: 400 })
+  }
+  if (intent === 'sell' && belowRetailAck !== true) {
+    return NextResponse.json(
+      { error: 'Please confirm you understand the mall buys items below retail price.' },
+      { status: 400 }
+    )
+  }
+
   if (!process.env.RESEND_API_KEY) {
     return NextResponse.json(
       { error: 'Email service is not configured. Please call (770) 973-5600 to submit your item.' },
@@ -128,12 +145,10 @@ export async function POST(request: NextRequest) {
 
   const categoryLabel = CATEGORY_LABELS[category] || category
   const intentLabel = intent === 'sell' ? 'Sell' : 'Donate'
-  const pricingLabel =
-    pricingIntent === 'offer'
-      ? 'Make me an offer'
-      : pricingIntent === 'asking'
-        ? `Asking $${esc(askingPrice)}`
-        : 'Donate (free)'
+  const priceText = price !== null ? formatDollars(price) : null
+  const pricingLabel = priceText
+    ? `${priceText} (seller confirmed the mall buys below retail)`
+    : 'Donate (free)'
   const conditionLabel = condition
     ? condition.charAt(0).toUpperCase() + condition.slice(1)
     : 'Not specified'
@@ -184,7 +199,7 @@ export async function POST(request: NextRequest) {
         <table style="width:100%;border-collapse:collapse;">
           <tr><td style="padding:6px 0;font-weight:600;color:#2A2A2A;width:120px;vertical-align:top;">From</td><td style="padding:6px 0;color:#444;">${esc(name)} · ${esc(email)}${phone ? ' · ' + esc(phone) : ''}</td></tr>
           <tr><td style="padding:6px 0;font-weight:600;color:#2A2A2A;vertical-align:top;">Location</td><td style="padding:6px 0;color:#444;">ZIP ${esc(trimmedZip)}</td></tr>
-          <tr><td style="padding:6px 0;font-weight:600;color:#2A2A2A;vertical-align:top;">Pricing</td><td style="padding:6px 0;color:#444;">${esc(pricingLabel)}</td></tr>
+          <tr><td style="padding:6px 0;font-weight:600;color:#2A2A2A;vertical-align:top;">${priceText ? 'Asking price' : 'Pricing'}</td><td style="padding:6px 0;color:#444;">${esc(pricingLabel)}</td></tr>
           <tr><td style="padding:6px 0;font-weight:600;color:#2A2A2A;vertical-align:top;">Timeline</td><td style="padding:6px 0;color:#444;">${esc(timelineLabel)}</td></tr>
           ${detailRows ? `<tr><td style="padding:6px 0;font-weight:600;color:#2A2A2A;vertical-align:top;">Details</td><td style="padding:6px 0;color:#444;">${detailRows}</td></tr>` : ''}
         </table>
@@ -205,6 +220,11 @@ export async function POST(request: NextRequest) {
         <p style="color:#444;font-size:14px;line-height:1.6;margin:0 0 16px;">
           Thanks for sending us your ${esc(String(categoryLabel).toLowerCase())}. We've received your submission and will review it shortly. If we're interested, we'll reach out to you directly — usually within 24 hours.
         </p>
+        ${
+          priceText
+            ? `<p style="color:#444;font-size:14px;line-height:1.6;margin:0 0 16px;">You asked ${esc(priceText)}. As a reseller we usually buy below retail price, and we'll let you know if we can make it work.</p>`
+            : ''
+        }
         <p style="color:#444;font-size:14px;line-height:1.6;margin:0;">You can reply directly to this email if you have any questions.</p>
       </div>${partnerPromoHtml('item')}
       <div style="padding:16px 24px;background:#F7F0E8;font-size:12px;color:#999;">
@@ -224,7 +244,7 @@ export async function POST(request: NextRequest) {
         from: MAIL_FROM,
         to: INBOX,
         replyTo: email,
-        subject: `Item submission: ${categoryLabel} — ${intentLabel} — ${name}`,
+        subject: `Item submission: ${categoryLabel} — ${priceText ? `Sell for ${priceText}` : intentLabel} — ${name}`,
         html: leadHtml,
       }),
       resendClient.emails.send({
