@@ -2,6 +2,7 @@
 
 import { BUSINESS_NAME, LOCATION, CONTACT_INFO, BUSINESS_HOURS } from '@/lib/constants'
 import { getGoogleMapsUrl } from '@/lib/utils'
+import { trackDirections, trackEmailTap, trackPhoneTap } from '@/lib/analytics'
 import Button from '@/components/ui/Button'
 import Card, { CardBody } from '@/components/ui/Card'
 
@@ -89,14 +90,7 @@ export default function ContactPage() {
                   size="lg"
                   className="!border-2 !border-mint !text-black hover:!bg-mint hover:!text-black"
                   onClick={() => {
-                    // Track GA4 contact event
-                    if (typeof window !== 'undefined' && (window as any).gtag) {
-                      (window as any).gtag('event', 'contact', {
-                        method: 'phone',
-                        page: 'contact',
-                        value: 1
-                      })
-                    }
+                    trackPhoneTap('contact_page')
 
                     // Track Meta Pixel contact event
                     if (typeof window !== 'undefined' && (window as any).fbq) {
@@ -161,14 +155,7 @@ export default function ContactPage() {
                   size="lg"
                   className="!border-2 !border-mauve"
                   onClick={() => {
-                    // Track GA4 contact event
-                    if (typeof window !== 'undefined' && (window as any).gtag) {
-                      (window as any).gtag('event', 'contact', {
-                        method: 'email',
-                        page: 'contact',
-                        value: 1
-                      })
-                    }
+                    trackEmailTap('contact_page')
 
                     // Track Meta Pixel contact event
                     if (typeof window !== 'undefined' && (window as any).fbq) {
@@ -246,13 +233,7 @@ export default function ContactPage() {
                   fullWidth
                   className="!border !border-slate"
                   onClick={() => {
-                    // Track GA4 get directions event
-                    if (typeof window !== 'undefined' && (window as any).gtag) {
-                      (window as any).gtag('event', 'get_directions', {
-                        page: 'contact',
-                        destination: 'Marietta Antique Mall'
-                      })
-                    }
+                    trackDirections('contact_page')
                     window.open(mapUrl, '_blank')
                   }}
                 >

@@ -2,6 +2,7 @@
 
 import { BUSINESS_NAME, LOCATION, CONTACT_INFO, BUSINESS_HOURS } from '@/lib/constants'
 import { isBusinessOpen, formatPhoneLink, getDirectionsUrl } from '@/lib/utils'
+import { trackDirections, trackPhoneTap } from '@/lib/analytics'
 import Button from '@/components/ui/Button'
 
 export default function VisitUsSection() {
@@ -12,7 +13,7 @@ export default function VisitUsSection() {
   const todayHours = BUSINESS_HOURS.find((h) => h.day === today)
 
   return (
-    <section id="visit-us" className="section-padding">
+    <section id="visit-us" className="section-padding" data-analytics-location="home_visit_section">
       <div className="container-custom">
         <div className="text-center mb-12">
           <h2 className="font-display text-4xl md:text-5xl font-bold text-black mb-4">
@@ -281,6 +282,7 @@ export default function VisitUsSection() {
                       content_category: 'Visit Section'
                     })
                   }
+                  trackDirections('home_visit_section')
                   window.open(directionsUrl, '_blank')
                 }}
               >
@@ -298,6 +300,7 @@ export default function VisitUsSection() {
                       content_category: 'Phone Call'
                     })
                   }
+                  trackPhoneTap('home_visit_section')
                   window.location.href = `tel:${formatPhoneLink(CONTACT_INFO.phone)}`
                 }}
               >

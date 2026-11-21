@@ -9,6 +9,7 @@ import {
 } from '@/lib/constants'
 import Button from '@/components/ui/Button'
 import Card, { CardBody } from '@/components/ui/Card'
+import { trackDirections, trackPhoneTap } from '@/lib/analytics'
 
 export default function VisitPage() {
   const mapUrl = GOOGLE_MAPS_URL
@@ -140,7 +141,10 @@ export default function VisitPage() {
                     <Button
                       variant="primary"
                       size="lg"
-                      onClick={() => window.open(mapUrl, '_blank')}
+                      onClick={() => {
+                        trackDirections('visit_page')
+                        window.open(mapUrl, '_blank')
+                      }}
                     >
                       <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path
@@ -366,7 +370,10 @@ export default function VisitPage() {
                 variant="primary"
                 size="lg"
                 className="!border-2 !border-mint !text-black hover:!bg-mint hover:!text-black"
-                onClick={() => (window.location.href = `tel:${CONTACT_INFO.phone}`)}
+                onClick={() => {
+                  trackPhoneTap('visit_page')
+                  window.location.href = `tel:${CONTACT_INFO.phone}`
+                }}
               >
                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path

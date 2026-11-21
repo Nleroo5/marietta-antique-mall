@@ -76,6 +76,7 @@ export default function HolidayOpenHouse() {
 
   return (
     <section
+      data-analytics-location="holiday_open_house"
       id={HOLIDAY_OPEN_HOUSE_ANCHOR}
       aria-labelledby="holiday-open-house-title"
       className="scroll-mt-24 bg-[#fbf1e1] py-16 md:py-24"

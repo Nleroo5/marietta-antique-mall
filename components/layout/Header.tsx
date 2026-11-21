@@ -25,7 +25,7 @@ export default function Header() {
   return (
     <>
       {/* Top Bar */}
-      <div className="hidden md:block bg-secondary/80 backdrop-blur-sm text-black py-2 text-sm">
+      <div className="hidden md:block bg-secondary/80 backdrop-blur-sm text-black py-2 text-sm" data-analytics-location="header_top_bar">
         <div className="container-custom flex flex-col sm:flex-row justify-between items-center gap-2">
           <div className="flex items-center gap-4">
             <span className="flex items-center gap-2">

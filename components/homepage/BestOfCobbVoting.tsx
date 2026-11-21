@@ -23,10 +23,8 @@ export default function BestOfCobbVoting() {
   const handleVoteClick = () => {
     // Track the click event
     if (typeof window !== 'undefined' && (window as any).gtag) {
-      (window as any).gtag('event', 'click', {
-        event_category: 'Best of Cobb',
-        event_label: 'Vote Now Button',
-        value: 1,
+      (window as any).gtag('event', 'award_vote_click', {
+        link_location: 'home_best_of_cobb',
       })
     }
 

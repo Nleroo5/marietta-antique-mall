@@ -9,10 +9,8 @@ export default function ShopPage() {
   const handleVisitGroupClick = () => {
     // Track Google Analytics event
     if (typeof window !== 'undefined' && (window as any).gtag) {
-      (window as any).gtag('event', 'click', {
-        event_category: 'Facebook Marketplace',
-        event_label: 'Visit Group Button',
-        value: 1,
+      (window as any).gtag('event', 'facebook_marketplace_click', {
+        link_location: 'shop_page',
       })
     }
 

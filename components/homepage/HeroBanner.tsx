@@ -30,10 +30,8 @@ export default function HeroBanner() {
   const handleShopNowClick = () => {
     // Track the click event
     if (typeof window !== 'undefined' && (window as any).gtag) {
-      (window as any).gtag('event', 'click', {
-        event_category: 'Facebook Marketplace',
-        event_label: 'Hero Banner CTA',
-        value: 1,
+      (window as any).gtag('event', 'facebook_marketplace_click', {
+        link_location: 'home_hero',
       })
     }
 

@@ -57,8 +57,7 @@ export default function AwardVoteBar() {
   const handleVoteClick = () => {
     if (typeof window !== 'undefined' && (window as any).gtag) {
       (window as any).gtag('event', 'award_vote_click', {
-        event_category: "Atlanta's Best 2026",
-        event_label: 'Sitewide bar',
+        link_location: 'sitewide_bar',
       })
     }
   }

@@ -71,10 +71,8 @@ export default function GalleryPage() {
   const handleShopNowClick = () => {
     // Track Google Analytics event
     if (typeof window !== 'undefined' && (window as any).gtag) {
-      (window as any).gtag('event', 'click', {
-        event_category: 'Facebook Marketplace',
-        event_label: 'Gallery Page CTA',
-        value: 1,
+      (window as any).gtag('event', 'facebook_marketplace_click', {
+        link_location: 'gallery_page',
       })
     }
 

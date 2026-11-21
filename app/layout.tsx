@@ -7,6 +7,8 @@ import AwardVoteBar from '@/components/layout/AwardVoteBar'
 import HolidayOpenHouseBar from '@/components/layout/HolidayOpenHouseBar'
 import Footer from '@/components/layout/Footer'
 import { BUSINESS_NAME, LOCATION, SEO_KEYWORDS, GOOGLE_MAPS_URL } from '@/lib/constants'
+import LinkTracker from '@/components/analytics/LinkTracker'
+import { ANALYTICS_ENABLED, GA_MEASUREMENT_ID, MARKETING_PIXELS_ENABLED } from '@/lib/analytics'
 
 const creteRound = Crete_Round({
   subsets: ['latin'],
@@ -123,9 +125,20 @@ export default function RootLayout({
         © Drive Lead Media - All Rights Reserved
       */}
       <head>
-        {/* Google Analytics 4 */}
-        <link rel="preconnect" href="https://www.googletagmanager.com" />
-        <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
+        {/* Google Analytics 4: set up first thing, so any event fired before gtag.js
+            finishes loading waits in the dataLayer instead of being dropped.
+            Live site only (see lib/analytics.ts). */}
+        {ANALYTICS_ENABLED && (
+          <>
+            <link rel="preconnect" href="https://www.googletagmanager.com" />
+            <script
+              id="ga4-init"
+              dangerouslySetInnerHTML={{
+                __html: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_MEASUREMENT_ID}');`,
+              }}
+            />
+          </>
+        )}
 
         {/* Resource Hints for External Domains */}
         <link rel="preconnect" href="https://connect.facebook.net" />
@@ -419,7 +432,8 @@ export default function RootLayout({
           }}
         />
 
-        {/* Meta Pixel Code - Inline for immediate execution */}
+        {/* Meta Pixel Code - Inline for immediate execution (live site only) */}
+        {MARKETING_PIXELS_ENABLED && (
         <script
           dangerouslySetInnerHTML={{
             __html: `
@@ -436,42 +450,44 @@ export default function RootLayout({
             `,
           }}
         />
+        )}
       </head>
       <body className={`${creteRound.variable} ${inter.variable} ${montserrat.variable} antialiased`}>
-        {/* Google Analytics 4 - gtag.js */}
-        <Script
-          src="https://www.googletagmanager.com/gtag/js?id=G-8LTQL1YW44"
-          strategy="afterInteractive"
-        />
-        <Script id="google-analytics" strategy="afterInteractive">
-          {`
-            window.dataLayer = window.dataLayer || [];
-            function gtag(){dataLayer.push(arguments);}
-            gtag('js', new Date());
-            gtag('config', 'G-8LTQL1YW44');
-          `}
-        </Script>
-
-        {/* Microsoft Clarity - Session recording & heatmaps */}
-        <Script id="microsoft-clarity" strategy="afterInteractive">
-          {`
-            (function(c,l,a,r,i,t,y){
-              c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
-              t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
-              y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
-            })(window, document, "clarity", "script", "uxxqhkqoqk");
-          `}
-        </Script>
-
-        <noscript>
-          <img
-            height="1"
-            width="1"
-            style={{ display: 'none' }}
-            src="https://www.facebook.com/tr?id=852163140862887&ev=PageView&noscript=1"
-            alt=""
+        {/* Google Analytics 4: the library itself. Setup and config ran in <head>. */}
+        {ANALYTICS_ENABLED && (
+          <Script
+            src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
+            strategy="afterInteractive"
           />
-        </noscript>
+        )}
+
+        {/* Microsoft Clarity - Session recording & heatmaps (live site only) */}
+        {MARKETING_PIXELS_ENABLED && (
+          <Script id="microsoft-clarity" strategy="afterInteractive">
+            {`
+              (function(c,l,a,r,i,t,y){
+                c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+                t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+                y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+              })(window, document, "clarity", "script", "uxxqhkqoqk");
+            `}
+          </Script>
+        )}
+
+        {MARKETING_PIXELS_ENABLED && (
+          <noscript>
+            <img
+              height="1"
+              width="1"
+              style={{ display: 'none' }}
+              src="https://www.facebook.com/tr?id=852163140862887&ev=PageView&noscript=1"
+              alt=""
+            />
+          </noscript>
+        )}
+
+        {/* Sends every phone, email and map link tap to GA4 (no-op when GA is off) */}
+        <LinkTracker />
 
         <AwardVoteBar />
         <HolidayOpenHouseBar />
