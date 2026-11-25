@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { cachedFeed } from '@/lib/booth-map/feed-cache'
 import FeedGrid from '@/components/booth-map/shop/FeedGrid'
 import VisitButtons from '@/components/booth-map/shop/VisitButtons'
@@ -28,6 +29,9 @@ export default async function NewArrivalsPage() {
           <div className="max-w-md pt-1">
             <VisitButtons compact />
           </div>
+          <Link href="/new-arrivals/map" className="inline-flex min-h-[44px] items-center self-start font-semibold text-[#2C2416] underline">
+            Find a booth on the store map
+          </Link>
         </div>
       </section>
 

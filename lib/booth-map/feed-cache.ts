@@ -1,7 +1,7 @@
 import { unstable_cache } from 'next/cache'
 import { getDb } from './db'
 import { FEED_TAG } from './cache'
-import { getBoothFeed, getFeed, getVisibleItem, includeTestVendors } from './feed'
+import { getBoothFeed, getFeed, getMapBooths, getVisibleItem, includeTestVendors } from './feed'
 import { boothSalesEnabled } from './sales'
 
 /**
@@ -25,7 +25,7 @@ import { boothSalesEnabled } from './sales'
  */
 const REVALIDATE = 300
 
-export function cacheKeyParts(kind: 'feed' | 'booth' | 'item', withTest = includeTestVendors(), withSales = boothSalesEnabled()): string[] {
+export function cacheKeyParts(kind: 'feed' | 'booth' | 'item' | 'map', withTest = includeTestVendors(), withSales = boothSalesEnabled()): string[] {
   return ['booth-map', kind, withTest ? 'with-test-vendors' : 'live-vendors-only', withSales ? 'sales-on' : 'sales-off']
 }
 
@@ -60,3 +60,12 @@ export const cachedItem = unstable_cache(
   cacheKeyParts('item'),
   { tags: [FEED_TAG], revalidate: REVALIDATE }
 )
+
+const mapBoothsFromCache = unstable_cache(
+  async () => getMapBooths(getDb(), feedOptions()),
+  cacheKeyParts('map'),
+  { tags: [FEED_TAG], revalidate: REVALIDATE }
+)
+
+/** Booth numbers the store map lights up. Empty during a build if the database can't be reached. */
+export const cachedMapBooths = () => orEmptyDuringBuild(mapBoothsFromCache, [] as string[])

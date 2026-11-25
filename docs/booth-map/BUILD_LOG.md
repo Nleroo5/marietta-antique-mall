@@ -92,3 +92,33 @@ Nits fixed: switching booths on the sale screen resets the discount and day; rep
 Nicolas asked for vendors to enter any discount instead of six fixed percents. Vendors now type any whole number from 1% to 90% (10, 15, 20, 25, 30 and 50 stay as one-tap shortcuts). Whole numbers keep sale prices exact to the cent; the 90% cap stops a typo like 100 from listing a booth for free. The database CHECK matches (migration `0003_booth_sales_any_percent`, applied to Neon); the sale price math is tested at every percent from 1 to 90. At 1% off, items under 51 cents round back to their own price (half-up rounding); from $1 up the sale price is always lower. Still off on the live site until `BOOTH_SALES_ENABLED=true`.
 
 Checks: 191 tests pass, `tsc` clean, build passes; end to end on the local build: 95% refused with a message, 35% shows $145 crossed out to $94.25 and reaches the feed, booth and item pages.
+
+## Store map, phase 1 (SPEC build step 6, 2026-11-24)
+
+The mall's printed floor plan (dated March 2023) arrived; Nicolas approved the plan and my recommendations ("go, use your recommendations"). Plan and analysis: https://claude.ai/artifact/NfzuG7w87YENNHuj2FmZ6e
+
+Built:
+- `lib/booth-map/floor-plan.ts`: all 239 spaces traced from the plan (162 booths, 49 end caps, 28 cases), one line each, plus streets, rooms and the entrance. The number is the address: the hundreds digit names the street, even numbers on the left walking in, the last two digits count from the front (`docs/booth-map/floor-plan/README.md`).
+- `lib/booth-map/directions.ts`: walking directions from the main entrance to every space ("Walk straight in. Marietta Street is right in front of you. Booth 705 is on your right, about halfway up."), booth search ("705", "booth 705", "2000a", "k 3", "1004" finds 1004-1006) and street search.
+- `/new-arrivals/map`: the charcoal map with the entrance at the bottom, drag, pinch, trackpad pinch and + and - zoom, search, a list by street, a panel with directions, and `?booth=705` links. Every space is drawn; only booths with a vendor shoppers can see are lit and tappable (`getMapBooths`, the same rule as booth pages, so a lit booth never opens a 404). Any space can be searched.
+- Booth and item pages: "Booth 705 · Marietta Street", the directions and a Show it on the store map link. The feed links to the map.
+- `scripts/booth-map/space-sheet.ts` writes `docs/booth-map/floor-plan/space-sheet.csv` for the front desk: every space, street by street, with directions and an empty Vendor column.
+
+Decisions (Nicolas, 2026-11-24): the plan's red dots are left off the map. Vendor names are not shown or searchable on shopper pages (they never have been; it would need the owners' OK). No database changes: the floor plan file holds the drawing; the booths table only says which vendor has which number.
+
+Test data: the Demo Vendor's made-up booths (114, 127, 136, 142, 151, 158) were renumbered to real spaces on the plan (705, 402, 1012, 2014, 506, 811) with Nicolas's OK, so previews show lit booths. Test vendors never show on the live site.
+
+Checks: 234 tests pass (43 new: numbering rules for every space, no overlaps, directions for every space, search, the lit-booth query on PGlite, the booth-page block), `tsc` clean, build passes (`/new-arrivals/map` static, refreshed every 5 minutes like the feed). Checked in Chrome on the local build at desktop width and in a 390 px frame (no sideways scroll): search, tap a lit booth, its booth page and back, drag, zoom, list by street, street search, the not-found message.
+
+Audit (independent reviewer): nothing must-fix; 6 should-fix, all handled:
+1. The booth address used `replaceState(window.history.state, ...)`, which Next.js treats as its own entry and later restores the old URL. Now `replaceState(null, ...)`.
+2. Screen readers activate with a synthetic click, which the lit booths ignored. They now take a click with `detail 0` (mouse and touch stay on the pointer handlers, so no double selection).
+3. A phone held sideways could be shorter than the map, and the map swallowed every swipe. Zoomed out it now lets a one-finger swipe scroll the page (`touch-pan-y`); zoomed in it takes swipes for dragging. The box is capped at 600 px and stays square below tablet width.
+4. Dragging re-rendered the hidden street list. The list renders only when shown, and each street's spaces are worked out once.
+5. On phones the directions sat below the map, out of sight. A pick now scrolls just enough to show them (not on page load).
+6. 920 and 921 sit past the men's restroom; their directions now say "past the far end of the aisle, between the restrooms" instead of a side.
+Nits fixed: wording for Powder Springs distances and the spaces under the cashier, ctrl+wheel cancels a running zoom, Safari trackpad pinch (gesture events, Mac only), the search message's live region stays rendered, the panel's live region is stable, tabbing to an off-screen booth pans to it, the map page keeps the share image.
+
+Known and accepted: if a vendor is paused or a booth reassigned, the map can show it lit for up to 5 minutes (nothing changes vendor status yet; when admin can, it must expire `FEED_TAG`, build step 9). Directions to the 2000s go up Cherokee Street to Powder Springs Street, which the walk-through must confirm.
+
+**Not live:** on the booth-map branch only, nothing merged to main. Waiting on the front desk: the space sheet (who rents what) and a 30-minute walk-through to confirm the plan.

@@ -7,6 +7,7 @@ import { CATEGORY_LABELS } from '@/lib/booth-map/feed-types'
 import Price, { onSale, priceSummary, saleLastDay } from '@/components/booth-map/shop/Price'
 import TimeAgo from '@/components/booth-map/shop/TimeAgo'
 import VisitButtons from '@/components/booth-map/shop/VisitButtons'
+import WhereToFind from '@/components/booth-map/map/WhereToFind'
 import { BUSINESS_NAME } from '@/lib/constants'
 
 export const revalidate = 300
@@ -86,6 +87,7 @@ export default async function ItemPage({ params }: Props) {
           ) : (
             <p className="text-base text-charcoal-light">Title and price are written by the vendor. Find it in Booth {item.booth}.</p>
           )}
+          {!item.sold && <WhereToFind booth={item.booth} />}
           <VisitButtons onSale={onSale(item)} />
           <Link
             href={`/new-arrivals/booth/${encodeURIComponent(item.booth)}`}

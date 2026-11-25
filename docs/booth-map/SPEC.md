@@ -329,7 +329,7 @@ One-time: none. Vendor links go out by text from the mall's phone (no printed ca
 - [ ] Which POS the mall uses, and one real sales report email (body text or PDF attachment?)
 - [ ] Can the mall send one combined daily report?
 - [ ] Do report lines include the tag description, a tag number, the price, or all three?
-- [ ] Floor plan with booth numbers
+- [x] Floor plan with booth numbers (received Nov 24, 2026: printed March 2023; traced in `lib/booth-map/floor-plan.ts`, see `docs/booth-map/floor-plan/README.md`; a walk-through with the front desk is still to confirm it)
 - [ ] Vendor list with booth numbers
 - [x] Confirm Next.js App Router and version (Next.js 16, App Router, Vercel Pro)
 - [ ] Which Resend plan the account is on (decides the $0 or $20 line)

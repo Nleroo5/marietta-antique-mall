@@ -6,6 +6,7 @@ import { normalizeBoothNumber } from '@/lib/booth-map/feed'
 import ItemCard from '@/components/booth-map/shop/ItemCard'
 import { onSale, saleLastDay } from '@/components/booth-map/shop/Price'
 import VisitButtons from '@/components/booth-map/shop/VisitButtons'
+import WhereToFind from '@/components/booth-map/map/WhereToFind'
 
 export const revalidate = 300
 
@@ -56,6 +57,9 @@ export default async function BoothPage({ params }: Props) {
             <b>Booth sale: {sale.salePercent}% off everything</b> through {saleLastDay(sale)}. Sale price confirmed at the register.
           </p>
         )}
+        <div className="mt-1 max-w-xl">
+          <WhereToFind booth={number} />
+        </div>
       </div>
       {items.length > 0 && (
         <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 sm:gap-4">

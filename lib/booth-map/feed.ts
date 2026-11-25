@@ -134,6 +134,20 @@ export async function getBoothFeed(db: AnyDb, boothNumber: string, opts: FeedOpt
   return rows.map((r) => toFeedItem(r as Row))
 }
 
+/**
+ * Booth numbers with a vendor shoppers may see, for the store map: the same rule as
+ * getBoothFeed, so every booth the map lights up opens a real booth page.
+ */
+export async function getMapBooths(db: AnyDb, opts: FeedOptions): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ number: schema.booths.number })
+    .from(schema.booths)
+    .innerJoin(schema.vendors, eq(schema.vendors.id, schema.booths.vendorId))
+    .where(and(eq(schema.vendors.status, 'active'), opts.includeTest ? undefined : eq(schema.vendors.isTest, false)))
+    .orderBy(schema.booths.number)
+  return rows.map((r) => r.number)
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
 export async function getVisibleItem(db: AnyDb, id: string, opts: FeedOptions): Promise<FeedItem | null> {
